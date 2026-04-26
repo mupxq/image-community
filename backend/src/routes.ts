@@ -1,0 +1,395 @@
+import { Router, type Request, type Response } from 'express'
+import db from './database'
+
+const router = Router()
+
+// ============ 用户 API ============
+
+router.get('/users', (_req: Request, res: Response) => {
+  const users = db.prepare('SELECT * FROM users').all()
+  res.json(users)
+})
+
+router.get('/users/:id', (req: Request<{ id: string }>, res: Response) => {
+  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.params.id)
+  if (!user) return res.status(404).json({ error: '用户不存在' })
+  res.json(user)
+})
+
+router.get('/users/:id/works', (req: Request<{ id: string }>, res: Response) => {
+  const works = db.prepare(`
+    SELECT w.*, u.nickname as creator_name, u.avatar as creator_avatar
+    FROM works w
+    JOIN users u ON w.creator_id = u.id
+    WHERE w.creator_id = ? AND w.status = 'published'
+    ORDER BY w.created_at DESC
+  `).all(req.params.id)
+  res.json(works)
+})
+
+router.get('/users/:id/contributions', (req: Request<{ id: string }>, res: Response) => {
+  const works = db.prepare(`
+    SELECT w.*, u.nickname as creator_name, u.avatar as creator_avatar
+    FROM contributors c
+    JOIN works w ON c.work_id = w.id
+    JOIN users u ON w.creator_id = u.id
+    WHERE c.user_id = ? AND w.status = 'published'
+    ORDER BY c.joined_at DESC
+  `).all(req.params.id)
+  res.json(works)
+})
+
+// ============ 作品 API ============
+
+router.get('/works', (req: Request<{}, {}, {}, { type?: string; sort?: string }>, res: Response) => {
+  const { type, sort } = req.query
+  let sql = `
+    SELECT w.*, u.nickname as creator_name, u.avatar as creator_avatar,
+      (SELECT COUNT(*) FROM works w2 WHERE w2.parent_work_id = w.id) as fork_count,
+      (SELECT COUNT(*) FROM comments c WHERE c.work_id = w.id) as comment_count
+    FROM works w
+    JOIN users u ON w.creator_id = u.id
+    WHERE w.status = 'published'
+  `
+  const params: string[] = []
+
+  if (type && type !== 'all') {
+    sql += ' AND w.type = ?'
+    params.push(type)
+  }
+
+  sql += sort === 'oldest' ? ' ORDER BY w.created_at ASC' : ' ORDER BY w.created_at DESC'
+
+  const works = db.prepare(sql).all(...params)
+  res.json(works)
+})
+
+interface WorkRow extends Record<string, unknown> {
+  id: number
+  title: string
+  parent_work_id: number | null
+  root_work_id: number | null
+  type: string
+}
+
+router.get('/works/:id', (req: Request<{ id: string }>, res: Response) => {
+  const work = db.prepare(`
+    SELECT w.*, u.nickname as creator_name, u.avatar as creator_avatar
+    FROM works w
+    JOIN users u ON w.creator_id = u.id
+    WHERE w.id = ?
+  `).get(req.params.id) as WorkRow | undefined
+
+  if (!work) return res.status(404).json({ error: '作品不存在' })
+
+  const contributors = db.prepare(`
+    SELECT u.id, u.nickname, u.avatar, c.role, c.joined_at
+    FROM contributors c
+    JOIN users u ON c.user_id = u.id
+    WHERE c.work_id = ?
+    ORDER BY c.joined_at ASC
+  `).all(req.params.id)
+
+  let parentWork = null
+  if (work.parent_work_id) {
+    parentWork = db.prepare(`
+      SELECT w.id, w.title, u.nickname as creator_name
+      FROM works w
+      JOIN users u ON w.creator_id = u.id
+      WHERE w.id = ?
+    `).get(work.parent_work_id)
+  }
+
+  res.json({ ...work, contributors, parentWork })
+})
+
+router.get('/works/:id/pages', (req: Request<{ id: string }>, res: Response) => {
+  const pages = db.prepare(`
+    SELECT * FROM work_pages WHERE work_id = ? ORDER BY page_number ASC
+  `).all(req.params.id)
+  res.json(pages)
+})
+
+interface TreeNodeRow extends Record<string, unknown> {
+  id: number
+  title: string
+  cover_image: string
+  type: string
+  parent_work_id: number | null
+  root_work_id: number | null
+  creator_id: number
+  created_at: string
+  creator_name: string
+  creator_avatar: string
+  fork_count: number
+}
+
+router.get('/works/:id/tree', (req: Request<{ id: string }>, res: Response) => {
+  const work = db.prepare('SELECT * FROM works WHERE id = ?').get(req.params.id) as WorkRow | undefined
+  if (!work) return res.status(404).json({ error: '作品不存在' })
+
+  const rootId = work.root_work_id || work.id
+
+  const allWorks = db.prepare(`
+    SELECT w.id, w.title, w.cover_image, w.type, w.parent_work_id, w.root_work_id,
+      w.creator_id, w.created_at,
+      u.nickname as creator_name, u.avatar as creator_avatar,
+      (SELECT COUNT(*) FROM works w2 WHERE w2.parent_work_id = w.id) as fork_count
+    FROM works w
+    JOIN users u ON w.creator_id = u.id
+    WHERE (w.root_work_id = ? OR w.id = ?) AND w.status = 'published'
+    ORDER BY w.created_at ASC
+  `).all(rootId, rootId) as TreeNodeRow[]
+
+  function buildTree(works: TreeNodeRow[], parentId: number | null): (TreeNodeRow & { children: ReturnType<typeof buildTree> })[] {
+    return works
+      .filter(w => (parentId === null ? w.id === rootId : w.parent_work_id === parentId))
+      .map(w => ({
+        ...w,
+        children: buildTree(works, w.id)
+      }))
+  }
+
+  const tree = buildTree(allWorks, null)
+  res.json(tree.length > 0 ? tree[0] : null)
+})
+
+interface PageInput {
+  image_url?: string
+  description?: string
+  dialogue?: string
+  ai_generated?: boolean | number
+}
+
+router.post('/works', (req: Request, res: Response) => {
+  const { title, description, type, creator_id, pages } = req.body as {
+    title: string
+    description?: string
+    type?: string
+    creator_id: number
+    pages?: PageInput[]
+  }
+
+  if (!title || !creator_id) {
+    return res.status(400).json({ error: '标题和创作者ID必填' })
+  }
+
+  const result = db.prepare(`
+    INSERT INTO works (title, description, type, creator_id, status)
+    VALUES (?, ?, ?, ?, 'published')
+  `).run(title, description || '', type || 'comic', creator_id)
+
+  const workId = Number(result.lastInsertRowid)
+
+  db.prepare('UPDATE works SET root_work_id = ? WHERE id = ?').run(workId, workId)
+  db.prepare('INSERT INTO contributors (work_id, user_id, role) VALUES (?, ?, ?)').run(workId, creator_id, 'creator')
+
+  if (pages && pages.length > 0) {
+    const insertPage = db.prepare('INSERT INTO work_pages (work_id, page_number, image_url, description, dialogue, ai_generated) VALUES (?, ?, ?, ?, ?, ?)')
+    pages.forEach((page, index) => {
+      insertPage.run(workId, index + 1, page.image_url || '', page.description || '', page.dialogue || '', page.ai_generated ? 1 : 0)
+    })
+  }
+
+  res.json({ id: workId, message: '作品创建成功' })
+})
+
+router.post('/works/:id/fork', (req: Request<{ id: string }>, res: Response) => {
+  const parentWork = db.prepare('SELECT * FROM works WHERE id = ?').get(req.params.id) as WorkRow | undefined
+  if (!parentWork) return res.status(404).json({ error: '原作品不存在' })
+
+  const { title, description, creator_id, pages } = req.body as {
+    title: string
+    description?: string
+    creator_id: number
+    pages?: PageInput[]
+  }
+
+  if (!title || !creator_id) {
+    return res.status(400).json({ error: '标题和创作者ID必填' })
+  }
+
+  const rootId = parentWork.root_work_id || parentWork.id
+
+  const result = db.prepare(`
+    INSERT INTO works (title, description, type, creator_id, parent_work_id, root_work_id, status)
+    VALUES (?, ?, ?, ?, ?, ?, 'published')
+  `).run(title, description || '', parentWork.type, creator_id, parentWork.id, rootId)
+
+  const workId = Number(result.lastInsertRowid)
+
+  db.prepare('INSERT OR IGNORE INTO contributors (work_id, user_id, role) VALUES (?, ?, ?)').run(workId, creator_id, 'creator')
+
+  const ancestorContributors = db.prepare(
+    'SELECT DISTINCT user_id FROM contributors WHERE work_id = ?'
+  ).all(parentWork.id) as { user_id: number }[]
+
+  for (const c of ancestorContributors) {
+    if (c.user_id !== creator_id) {
+      db.prepare('INSERT OR IGNORE INTO contributors (work_id, user_id, role) VALUES (?, ?, ?)').run(workId, c.user_id, 'ancestor')
+    }
+  }
+
+  if (pages && pages.length > 0) {
+    const insertPage = db.prepare('INSERT INTO work_pages (work_id, page_number, image_url, description, dialogue, ai_generated) VALUES (?, ?, ?, ?, ?, ?)')
+    pages.forEach((page, index) => {
+      insertPage.run(workId, index + 1, page.image_url || '', page.description || '', page.dialogue || '', page.ai_generated ? 1 : 0)
+    })
+  }
+
+  res.json({ id: workId, message: '续写创建成功' })
+})
+
+// ============ 评论 API ============
+
+router.get('/works/:id/comments', (req: Request<{ id: string }>, res: Response) => {
+  const comments = db.prepare(`
+    SELECT c.*, u.nickname, u.avatar
+    FROM comments c
+    JOIN users u ON c.user_id = u.id
+    WHERE c.work_id = ?
+    ORDER BY c.created_at ASC
+  `).all(req.params.id)
+  res.json(comments)
+})
+
+router.post('/works/:id/comments', (req: Request<{ id: string }>, res: Response) => {
+  const { user_id, content } = req.body as { user_id?: number; content?: string }
+  if (!user_id || !content) {
+    return res.status(400).json({ error: '用户ID和内容必填' })
+  }
+  db.prepare('INSERT INTO comments (work_id, user_id, content) VALUES (?, ?, ?)').run(req.params.id, user_id, content)
+  res.json({ message: '评论成功' })
+})
+
+// ============ 书架/收藏 API ============
+
+router.get('/users/:id/bookmarks', (req: Request<{ id: string }, {}, {}, { status?: string }>, res: Response) => {
+  const { status } = req.query
+  let sql = `
+    SELECT b.*, w.title, w.description, w.type, w.cover_image,
+      u.nickname as creator_name, u.avatar as creator_avatar,
+      (SELECT COUNT(*) FROM work_pages wp WHERE wp.work_id = w.id) as total_pages
+    FROM bookmarks b
+    JOIN works w ON b.work_id = w.id
+    JOIN users u ON w.creator_id = u.id
+    WHERE b.user_id = ?
+  `
+  const params: (string | number)[] = [req.params.id]
+  if (status && status !== 'all') {
+    sql += ' AND b.read_status = ?'
+    params.push(status)
+  }
+  sql += ' ORDER BY b.updated_at DESC'
+  const bookmarks = db.prepare(sql).all(...params)
+  res.json(bookmarks)
+})
+
+router.post('/bookmarks', (req: Request, res: Response) => {
+  const { user_id, work_id } = req.body as { user_id?: number; work_id?: number }
+  if (!user_id || !work_id) return res.status(400).json({ error: '参数缺失' })
+  db.prepare('INSERT OR IGNORE INTO bookmarks (user_id, work_id, read_status) VALUES (?, ?, ?)').run(user_id, work_id, 'want_read')
+  res.json({ message: '已加入书架' })
+})
+
+router.put('/bookmarks/:id', (req: Request<{ id: string }>, res: Response) => {
+  const { read_status, last_read_page } = req.body as { read_status?: string; last_read_page?: number }
+  if (read_status) {
+    db.prepare('UPDATE bookmarks SET read_status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(read_status, req.params.id)
+  }
+  if (last_read_page !== undefined) {
+    db.prepare('UPDATE bookmarks SET last_read_page = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(last_read_page, req.params.id)
+  }
+  res.json({ message: '已更新' })
+})
+
+router.delete('/bookmarks/:id', (req: Request<{ id: string }>, res: Response) => {
+  db.prepare('DELETE FROM bookmarks WHERE id = ?').run(req.params.id)
+  res.json({ message: '已移出书架' })
+})
+
+router.get('/bookmarks/check', (req: Request<{}, {}, {}, { user_id?: string; work_id?: string }>, res: Response) => {
+  const { user_id, work_id } = req.query
+  const bookmark = db.prepare('SELECT * FROM bookmarks WHERE user_id = ? AND work_id = ?').get(user_id, work_id)
+  res.json({ bookmarked: !!bookmark, bookmark })
+})
+
+// ============ 消息 API ============
+
+interface ConversationRow extends Record<string, unknown> {
+  id: number
+  type: string
+  title: string
+  work_id: number | null
+  last_message?: string
+  last_sender?: string
+}
+
+router.get('/users/:id/conversations', (req: Request<{ id: string }>, res: Response) => {
+  const conversations = db.prepare(`
+    SELECT c.*,
+      (SELECT content FROM messages m WHERE m.conversation_id = c.id ORDER BY m.created_at DESC LIMIT 1) as last_message,
+      (SELECT u2.nickname FROM messages m2 JOIN users u2 ON m2.sender_id = u2.id WHERE m2.conversation_id = c.id ORDER BY m2.created_at DESC LIMIT 1) as last_sender,
+      (SELECT m3.created_at FROM messages m3 WHERE m3.conversation_id = c.id ORDER BY m3.created_at DESC LIMIT 1) as last_message_time
+    FROM conversations c
+    JOIN conversation_members cm ON c.id = cm.conversation_id
+    WHERE cm.user_id = ?
+    ORDER BY last_message_time DESC
+  `).all(req.params.id) as ConversationRow[]
+
+  interface MemberRow { id: number; nickname: string; avatar: string }
+
+  const convWithMembers = conversations.map(conv => {
+    const members = db.prepare(`
+      SELECT u.id, u.nickname, u.avatar
+      FROM conversation_members cm
+      JOIN users u ON cm.user_id = u.id
+      WHERE cm.conversation_id = ?
+    `).all(conv.id) as MemberRow[]
+
+    let displayName: string = conv.title
+    let displayAvatar = ''
+    if (conv.type === 'private') {
+      const other = members.find(m => m.id !== parseInt(req.params.id))
+      if (other) {
+        displayName = other.nickname
+        displayAvatar = other.avatar
+      }
+    }
+
+    return { ...conv, members, displayName, displayAvatar }
+  })
+
+  res.json(convWithMembers)
+})
+
+router.get('/conversations/:id/messages', (req: Request<{ id: string }>, res: Response) => {
+  const messages = db.prepare(`
+    SELECT m.*, u.nickname as sender_name, u.avatar as sender_avatar
+    FROM messages m
+    JOIN users u ON m.sender_id = u.id
+    WHERE m.conversation_id = ?
+    ORDER BY m.created_at ASC
+  `).all(req.params.id)
+
+  const conv = db.prepare('SELECT * FROM conversations WHERE id = ?').get(req.params.id)
+  const members = db.prepare(`
+    SELECT u.id, u.nickname, u.avatar
+    FROM conversation_members cm
+    JOIN users u ON cm.user_id = u.id
+    WHERE cm.conversation_id = ?
+  `).all(req.params.id)
+
+  res.json({ conversation: conv, members, messages })
+})
+
+router.post('/conversations/:id/messages', (req: Request<{ id: string }>, res: Response) => {
+  const { sender_id, content, msg_type } = req.body as { sender_id?: number; content?: string; msg_type?: string }
+  if (!sender_id || !content) return res.status(400).json({ error: '参数缺失' })
+  db.prepare('INSERT INTO messages (conversation_id, sender_id, content, msg_type) VALUES (?, ?, ?, ?)').run(
+    req.params.id, sender_id, content, msg_type || 'text'
+  )
+  res.json({ message: '发送成功' })
+})
+
+export default router

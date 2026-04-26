@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>影像社区</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app">
+    <!-- 底部导航栏 -->
+    <nav class="tab-bar">
+      <div class="tab-item active" data-page="home">
+        <span class="tab-icon">🏠</span>
+        <span class="tab-label">发现</span>
+      </div>
+      <div class="tab-item" data-page="shelf">
+        <span class="tab-icon">📚</span>
+        <span class="tab-label">书架</span>
+      </div>
+      <div class="tab-item" data-page="create">
+        <span class="tab-icon create-btn">✚</span>
+        <span class="tab-label">创作</span>
+      </div>
+      <div class="tab-item" data-page="messages">
+        <span class="tab-icon">💬</span>
+        <span class="tab-label">消息</span>
+      </div>
+      <div class="tab-item" data-page="profile">
+        <span class="tab-icon">👤</span>
+        <span class="tab-label">我的</span>
+      </div>
+    </nav>
+
+    <!-- 首页/发现页 -->
+    <div id="page-home" class="page active">
+      <header class="page-header">
+        <h1>影像社区</h1>
+        <p class="subtitle">AI共创 · 无限可能</p>
+      </header>
+      <div class="filter-tabs">
+        <span class="filter-tab active" data-type="all">全部</span>
+        <span class="filter-tab" data-type="comic">漫画</span>
+        <span class="filter-tab" data-type="drama">短剧</span>
+      </div>
+      <div id="works-list" class="works-grid"></div>
+    </div>
+
+    <!-- 作品详情页 -->
+    <div id="page-detail" class="page">
+      <header class="detail-header">
+        <button class="back-btn" onclick="goBack()">← 返回</button>
+        <span id="detail-title-header"></span>
+      </header>
+      <div id="detail-content" class="detail-content"></div>
+    </div>
+
+    <!-- 创作树页面 -->
+    <div id="page-tree" class="page">
+      <header class="detail-header">
+        <button class="back-btn" onclick="goBack()">← 返回</button>
+        <span>创作树</span>
+      </header>
+      <div id="tree-content" class="tree-content"></div>
+    </div>
+
+    <!-- 创作页面 -->
+    <div id="page-create" class="page">
+      <header class="detail-header">
+        <button class="back-btn" onclick="showPage('home')">← 返回</button>
+        <span>创作新作品</span>
+      </header>
+      <div id="create-content" class="create-content"></div>
+    </div>
+
+    <!-- 续写页面 -->
+    <div id="page-fork" class="page">
+      <header class="detail-header">
+        <button class="back-btn" onclick="goBack()">← 返回</button>
+        <span>续写作品</span>
+      </header>
+      <div id="fork-content" class="fork-content"></div>
+    </div>
+
+    <!-- 书架页面 -->
+    <div id="page-shelf" class="page">
+      <header class="page-header">
+        <h1>我的书架</h1>
+        <p class="subtitle">收藏的作品都在这里</p>
+      </header>
+      <div class="filter-tabs">
+        <span class="filter-tab active" data-shelf="all">全部</span>
+        <span class="filter-tab" data-shelf="reading">在读</span>
+        <span class="filter-tab" data-shelf="want_read">想读</span>
+        <span class="filter-tab" data-shelf="finished">已读完</span>
+      </div>
+      <div id="shelf-content"></div>
+    </div>
+
+    <!-- 消息列表页面 -->
+    <div id="page-messages" class="page">
+      <header class="page-header">
+        <h1>消息</h1>
+        <p class="subtitle">与共创伙伴交流</p>
+      </header>
+      <div id="messages-list-content"></div>
+    </div>
+
+    <!-- 聊天详情页面 -->
+    <div id="page-chat" class="page">
+      <header class="detail-header">
+        <button class="back-btn" onclick="goBack()">← 返回</button>
+        <span id="chat-title-header"></span>
+      </header>
+      <div id="chat-content" class="chat-content"></div>
+      <div class="chat-input-bar" id="chat-input-bar">
+        <input type="text" class="chat-input" id="chat-input" placeholder="输入消息...">
+        <button class="chat-send-btn" id="chat-send-btn">发送</button>
+      </div>
+    </div>
+
+    <!-- 个人中心页面 -->
+    <div id="page-profile" class="page">
+      <header class="page-header">
+        <h1>我的</h1>
+      </header>
+      <div id="profile-content"></div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

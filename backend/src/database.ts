@@ -1,0 +1,122 @@
+import Database from 'better-sqlite3'
+import path from 'path'
+
+const db: InstanceType<typeof Database> = new Database(path.join(__dirname, '..', 'data.db'))
+
+// 启用WAL模式提升性能
+db.pragma('journal_mode = WAL')
+db.pragma('foreign_keys = ON')
+
+// 创建表结构
+db.exec(`
+  -- 用户表
+  CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nickname TEXT NOT NULL,
+    avatar TEXT DEFAULT '',
+    bio TEXT DEFAULT '',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  -- 作品表
+  CREATE TABLE IF NOT EXISTS works (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    description TEXT DEFAULT '',
+    cover_image TEXT DEFAULT '',
+    type TEXT CHECK(type IN ('comic', 'drama')) NOT NULL DEFAULT 'comic',
+    creator_id INTEGER NOT NULL,
+    parent_work_id INTEGER DEFAULT NULL,
+    root_work_id INTEGER DEFAULT NULL,
+    status TEXT CHECK(status IN ('draft', 'published')) NOT NULL DEFAULT 'draft',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (creator_id) REFERENCES users(id),
+    FOREIGN KEY (parent_work_id) REFERENCES works(id),
+    FOREIGN KEY (root_work_id) REFERENCES works(id)
+  );
+
+  -- 作品页面/分镜表
+  CREATE TABLE IF NOT EXISTS work_pages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    work_id INTEGER NOT NULL,
+    page_number INTEGER NOT NULL,
+    image_url TEXT DEFAULT '',
+    description TEXT DEFAULT '',
+    dialogue TEXT DEFAULT '',
+    ai_generated INTEGER DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (work_id) REFERENCES works(id)
+  );
+
+  -- 共创贡献者表（记录作品链上的所有参与者）
+  CREATE TABLE IF NOT EXISTS contributors (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    work_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    role TEXT DEFAULT 'creator',
+    joined_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (work_id) REFERENCES works(id),
+    FOREIGN KEY (user_id) REFERENCES users(id),
+    UNIQUE(work_id, user_id)
+  );
+
+  -- 评论表
+  CREATE TABLE IF NOT EXISTS comments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    work_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    content TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (work_id) REFERENCES works(id),
+    FOREIGN KEY (user_id) REFERENCES users(id)
+  );
+
+  -- 收藏/书架表
+  CREATE TABLE IF NOT EXISTS bookmarks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    work_id INTEGER NOT NULL,
+    read_status TEXT CHECK(read_status IN ('want_read', 'reading', 'finished')) NOT NULL DEFAULT 'want_read',
+    last_read_page INTEGER DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id),
+    FOREIGN KEY (work_id) REFERENCES works(id),
+    UNIQUE(user_id, work_id)
+  );
+
+  -- 消息/会话表
+  CREATE TABLE IF NOT EXISTS conversations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    type TEXT CHECK(type IN ('private', 'group')) NOT NULL DEFAULT 'private',
+    title TEXT DEFAULT '',
+    work_id INTEGER DEFAULT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (work_id) REFERENCES works(id)
+  );
+
+  -- 会话成员
+  CREATE TABLE IF NOT EXISTS conversation_members (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    conversation_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    joined_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (conversation_id) REFERENCES conversations(id),
+    FOREIGN KEY (user_id) REFERENCES users(id),
+    UNIQUE(conversation_id, user_id)
+  );
+
+  -- 消息表
+  CREATE TABLE IF NOT EXISTS messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    conversation_id INTEGER NOT NULL,
+    sender_id INTEGER NOT NULL,
+    content TEXT NOT NULL,
+    msg_type TEXT CHECK(msg_type IN ('text', 'image', 'work_share', 'system')) NOT NULL DEFAULT 'text',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (conversation_id) REFERENCES conversations(id),
+    FOREIGN KEY (sender_id) REFERENCES users(id)
+  );
+`)
+
+export default db
