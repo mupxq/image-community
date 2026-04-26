@@ -1,5 +1,6 @@
 import { Router, type Request, type Response } from 'express'
 import db from './database'
+import { requireAuth, type AuthRequest } from './auth'
 
 const router = Router()
 
@@ -161,17 +162,17 @@ interface PageInput {
   ai_generated?: boolean | number
 }
 
-router.post('/works', (req: Request, res: Response) => {
-  const { title, description, type, creator_id, pages } = req.body as {
+router.post('/works', requireAuth, (req: AuthRequest, res: Response) => {
+  const { title, description, type, pages } = req.body as {
     title: string
     description?: string
     type?: string
-    creator_id: number
     pages?: PageInput[]
   }
+  const creator_id = req.userId!
 
-  if (!title || !creator_id) {
-    return res.status(400).json({ error: '标题和创作者ID必填' })
+  if (!title) {
+    return res.status(400).json({ error: '标题必填' })
   }
 
   const result = db.prepare(`
@@ -194,19 +195,19 @@ router.post('/works', (req: Request, res: Response) => {
   res.json({ id: workId, message: '作品创建成功' })
 })
 
-router.post('/works/:id/fork', (req: Request<{ id: string }>, res: Response) => {
+router.post('/works/:id/fork', requireAuth, (req: AuthRequest<{ id: string }>, res: Response) => {
   const parentWork = db.prepare('SELECT * FROM works WHERE id = ?').get(req.params.id) as WorkRow | undefined
   if (!parentWork) return res.status(404).json({ error: '原作品不存在' })
 
-  const { title, description, creator_id, pages } = req.body as {
+  const { title, description, pages } = req.body as {
     title: string
     description?: string
-    creator_id: number
     pages?: PageInput[]
   }
+  const creator_id = req.userId!
 
-  if (!title || !creator_id) {
-    return res.status(400).json({ error: '标题和创作者ID必填' })
+  if (!title) {
+    return res.status(400).json({ error: '标题必填' })
   }
 
   const rootId = parentWork.root_work_id || parentWork.id
@@ -253,12 +254,12 @@ router.get('/works/:id/comments', (req: Request<{ id: string }>, res: Response) 
   res.json(comments)
 })
 
-router.post('/works/:id/comments', (req: Request<{ id: string }>, res: Response) => {
-  const { user_id, content } = req.body as { user_id?: number; content?: string }
-  if (!user_id || !content) {
-    return res.status(400).json({ error: '用户ID和内容必填' })
+router.post('/works/:id/comments', requireAuth, (req: AuthRequest<{ id: string }>, res: Response) => {
+  const { content } = req.body as { content?: string }
+  if (!content) {
+    return res.status(400).json({ error: '内容必填' })
   }
-  db.prepare('INSERT INTO comments (work_id, user_id, content) VALUES (?, ?, ?)').run(req.params.id, user_id, content)
+  db.prepare('INSERT INTO comments (work_id, user_id, content) VALUES (?, ?, ?)').run(req.params.id, req.userId, content)
   res.json({ message: '评论成功' })
 })
 
@@ -285,14 +286,18 @@ router.get('/users/:id/bookmarks', (req: Request<{ id: string }, {}, {}, { statu
   res.json(bookmarks)
 })
 
-router.post('/bookmarks', (req: Request, res: Response) => {
-  const { user_id, work_id } = req.body as { user_id?: number; work_id?: number }
-  if (!user_id || !work_id) return res.status(400).json({ error: '参数缺失' })
-  db.prepare('INSERT OR IGNORE INTO bookmarks (user_id, work_id, read_status) VALUES (?, ?, ?)').run(user_id, work_id, 'want_read')
+router.post('/bookmarks', requireAuth, (req: AuthRequest, res: Response) => {
+  const { work_id } = req.body as { work_id?: number }
+  if (!work_id) return res.status(400).json({ error: '参数缺失' })
+  db.prepare('INSERT OR IGNORE INTO bookmarks (user_id, work_id, read_status) VALUES (?, ?, ?)').run(req.userId, work_id, 'want_read')
   res.json({ message: '已加入书架' })
 })
 
-router.put('/bookmarks/:id', (req: Request<{ id: string }>, res: Response) => {
+router.put('/bookmarks/:id', requireAuth, (req: AuthRequest<{ id: string }>, res: Response) => {
+  const bookmark = db.prepare('SELECT * FROM bookmarks WHERE id = ?').get(req.params.id) as { user_id: number } | undefined
+  if (!bookmark || bookmark.user_id !== req.userId) {
+    return res.status(403).json({ error: '无权操作' })
+  }
   const { read_status, last_read_page } = req.body as { read_status?: string; last_read_page?: number }
   if (read_status) {
     db.prepare('UPDATE bookmarks SET read_status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(read_status, req.params.id)
@@ -303,14 +308,21 @@ router.put('/bookmarks/:id', (req: Request<{ id: string }>, res: Response) => {
   res.json({ message: '已更新' })
 })
 
-router.delete('/bookmarks/:id', (req: Request<{ id: string }>, res: Response) => {
+router.delete('/bookmarks/:id', requireAuth, (req: AuthRequest<{ id: string }>, res: Response) => {
+  const bookmark = db.prepare('SELECT * FROM bookmarks WHERE id = ?').get(req.params.id) as { user_id: number } | undefined
+  if (!bookmark || bookmark.user_id !== req.userId) {
+    return res.status(403).json({ error: '无权操作' })
+  }
   db.prepare('DELETE FROM bookmarks WHERE id = ?').run(req.params.id)
   res.json({ message: '已移出书架' })
 })
 
-router.get('/bookmarks/check', (req: Request<{}, {}, {}, { user_id?: string; work_id?: string }>, res: Response) => {
-  const { user_id, work_id } = req.query
-  const bookmark = db.prepare('SELECT * FROM bookmarks WHERE user_id = ? AND work_id = ?').get(user_id, work_id)
+router.get('/bookmarks/check', (req: AuthRequest<{}, {}, {}, { work_id?: string }>, res: Response) => {
+  const { work_id } = req.query
+  if (!req.userId || !work_id) {
+    return res.json({ bookmarked: false, bookmark: null })
+  }
+  const bookmark = db.prepare('SELECT * FROM bookmarks WHERE user_id = ? AND work_id = ?').get(req.userId, work_id)
   res.json({ bookmarked: !!bookmark, bookmark })
 })
 
@@ -383,11 +395,11 @@ router.get('/conversations/:id/messages', (req: Request<{ id: string }>, res: Re
   res.json({ conversation: conv, members, messages })
 })
 
-router.post('/conversations/:id/messages', (req: Request<{ id: string }>, res: Response) => {
-  const { sender_id, content, msg_type } = req.body as { sender_id?: number; content?: string; msg_type?: string }
-  if (!sender_id || !content) return res.status(400).json({ error: '参数缺失' })
+router.post('/conversations/:id/messages', requireAuth, (req: AuthRequest<{ id: string }>, res: Response) => {
+  const { content, msg_type } = req.body as { content?: string; msg_type?: string }
+  if (!content) return res.status(400).json({ error: '内容必填' })
   db.prepare('INSERT INTO messages (conversation_id, sender_id, content, msg_type) VALUES (?, ?, ?, ?)').run(
-    req.params.id, sender_id, content, msg_type || 'text'
+    req.params.id, req.userId, content, msg_type || 'text'
   )
   res.json({ message: '发送成功' })
 })

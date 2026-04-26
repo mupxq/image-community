@@ -7,7 +7,7 @@ import BackHeader from '../components/BackHeader'
 
 export default function Chat() {
   const { id } = useParams<{ id: string }>()
-  const { currentUser } = useUser()
+  const { user } = useUser()
   const [conversation, setConversation] = useState<Conversation | null>(null)
   const [members, setMembers] = useState<User[]>([])
   const [messages, setMessages] = useState<Message[]>([])
@@ -30,13 +30,13 @@ export default function Chat() {
 
   const send = async () => {
     if (!input.trim() || !id) return
-    await conversationsApi.sendMessage(Number(id), { sender_id: currentUser, content: input.trim() })
+    await conversationsApi.sendMessage(Number(id), { content: input.trim() })
     setInput('')
     load()
   }
 
   const title = conversation?.type === 'private'
-    ? members.find((m) => m.id !== currentUser)?.nickname ?? '私聊'
+    ? members.find((m) => m.id !== user?.id)?.nickname ?? '私聊'
     : conversation?.title ?? '群聊'
 
   return (
@@ -52,7 +52,7 @@ export default function Chat() {
 
         <div className="space-y-3">
           {messages.map((msg) => {
-            const isMine = msg.sender_id === currentUser
+            const isMine = msg.sender_id === user?.id
             return (
               <div key={msg.id} className={`flex gap-2 ${isMine ? 'flex-row-reverse' : ''}`}>
                 <div className="text-lg shrink-0">{msg.sender_avatar}</div>

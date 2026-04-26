@@ -1,3 +1,12 @@
+export interface AuthUser {
+  id: number
+  username: string
+  nickname: string
+  avatar: string
+  bio: string
+  created_at: string
+}
+
 export interface User {
   id: number
   nickname: string

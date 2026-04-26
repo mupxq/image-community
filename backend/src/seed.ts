@@ -1,4 +1,5 @@
 import db from './database'
+import bcrypt from 'bcryptjs'
 
 interface SeedPage {
   description: string
@@ -17,12 +18,14 @@ interface SeedWork {
 }
 
 const users = [
-  { nickname: '星辰画手', avatar: '🎨', bio: '喜欢画漫画的自由创作者' },
-  { nickname: '光影猎人', avatar: '📷', bio: '摄影爱好者，擅长风光和人文' },
-  { nickname: '故事编织者', avatar: '✍️', bio: '脑洞大开的剧情创作者' },
-  { nickname: '像素旅人', avatar: '🎮', bio: 'AI绘图玩家，像素风爱好者' },
-  { nickname: '墨染清风', avatar: '🖌️', bio: '国风插画师，水墨风格' },
+  { username: 'starcreator', nickname: '星辰画手', avatar: '🎨', bio: '喜欢画漫画的自由创作者' },
+  { username: 'lighthunter', nickname: '光影猎人', avatar: '📷', bio: '摄影爱好者，擅长风光和人文' },
+  { username: 'storyweaver', nickname: '故事编织者', avatar: '✍️', bio: '脑洞大开的剧情创作者' },
+  { username: 'pixeltraveler', nickname: '像素旅人', avatar: '🎮', bio: 'AI绘图玩家，像素风爱好者' },
+  { username: 'inkbreeze', nickname: '墨染清风', avatar: '🖌️', bio: '国风插画师，水墨风格' },
 ]
+
+const DEFAULT_PASSWORD = '123456'
 
 const comicWorks: SeedWork[] = [
   {
@@ -133,7 +136,8 @@ export default function seedData(): void {
 
   console.log('开始初始化预置数据...')
 
-  const insertUser = db.prepare('INSERT INTO users (nickname, avatar, bio) VALUES (?, ?, ?)')
+  const passwordHash = bcrypt.hashSync(DEFAULT_PASSWORD, 10)
+  const insertUser = db.prepare('INSERT INTO users (username, password_hash, nickname, avatar, bio) VALUES (?, ?, ?, ?, ?)')
   const insertWork = db.prepare('INSERT INTO works (title, description, type, creator_id, parent_work_id, root_work_id, status) VALUES (?, ?, ?, ?, ?, ?, ?)')
   const insertPage = db.prepare('INSERT INTO work_pages (work_id, page_number, image_url, description, dialogue) VALUES (?, ?, ?, ?, ?)')
   const insertContributor = db.prepare('INSERT OR IGNORE INTO contributors (work_id, user_id, role) VALUES (?, ?, ?)')
@@ -141,7 +145,7 @@ export default function seedData(): void {
 
   const transaction = db.transaction(() => {
     for (const user of users) {
-      insertUser.run(user.nickname, user.avatar, user.bio)
+      insertUser.run(user.username, passwordHash, user.nickname, user.avatar, user.bio)
     }
 
     for (const work of comicWorks) {

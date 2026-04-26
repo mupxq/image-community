@@ -1,9 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { worksApi } from '../api'
 import type { PageInput } from '../types'
-import { useUser } from '../contexts/UserContext'
-import UserSelector from '../components/UserSelector'
 import PagesEditor from '../components/PagesEditor'
 
 const styles = [
@@ -32,7 +30,6 @@ const mockTemplates = [
 
 export default function Create() {
   const navigate = useNavigate()
-  const { currentUser, ensureUsers } = useUser()
   const [mode, setMode] = useState<'manual' | 'ai'>('manual')
 
   // Manual fields
@@ -50,12 +47,10 @@ export default function Create() {
   const [aiStep, setAiStep] = useState(0)
   const [aiResult, setAiResult] = useState<{ title: string; desc: string; pages: PageInput[] } | null>(null)
 
-  useEffect(() => { ensureUsers() }, [])
-
   const submitManual = async () => {
     if (!title.trim()) return alert('请输入标题')
     if (!pages[0]?.description.trim()) return alert('请至少填写第一页场景描述')
-    await worksApi.create({ title: title.trim(), description: desc.trim(), type, creator_id: currentUser, pages })
+    await worksApi.create({ title: title.trim(), description: desc.trim(), type, pages })
     navigate('/')
   }
 
@@ -86,7 +81,6 @@ export default function Create() {
       title: aiResult.title,
       description: aiResult.desc,
       type: aiType,
-      creator_id: currentUser,
       pages: aiResult.pages,
     })
     navigate('/')
@@ -99,8 +93,6 @@ export default function Create() {
       </div>
 
       <div className="px-4 space-y-4">
-        <UserSelector />
-
         {/* Mode tabs */}
         <div className="flex gap-2">
           <button

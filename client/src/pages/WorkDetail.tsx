@@ -9,7 +9,7 @@ import CommentSection from '../components/CommentSection'
 export default function WorkDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const { currentUser } = useUser()
+  const { user } = useUser()
   const [work, setWork] = useState<WorkDetailType | null>(null)
   const [pages, setPages] = useState<WorkPage[]>([])
   const [comments, setComments] = useState<Comment[]>([])
@@ -29,12 +29,13 @@ export default function WorkDetail() {
 
   const addToShelf = async () => {
     if (!work) return
-    const check = await bookmarksApi.check(currentUser, work.id)
+    if (!user) { navigate('/login'); return }
+    const check = await bookmarksApi.check(work.id)
     if (check.bookmarked) {
       alert('已在书架中')
       return
     }
-    await bookmarksApi.create({ user_id: currentUser, work_id: work.id })
+    await bookmarksApi.create({ work_id: work.id })
     alert('已加入书架')
   }
 
@@ -100,7 +101,7 @@ export default function WorkDetail() {
         {/* Actions */}
         <div className="flex gap-2">
           <button
-            onClick={() => navigate(`/fork/${work.id}`)}
+            onClick={() => user ? navigate(`/fork/${work.id}`) : navigate('/login')}
             className="flex-1 py-2.5 bg-primary rounded-lg text-sm text-white hover:bg-primary-light transition-colors"
           >
             续写此作品

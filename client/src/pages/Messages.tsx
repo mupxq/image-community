@@ -6,12 +6,13 @@ import { useUser } from '../contexts/UserContext'
 
 export default function Messages() {
   const [conversations, setConversations] = useState<Conversation[]>([])
-  const { currentUser } = useUser()
+  const { user } = useUser()
   const navigate = useNavigate()
 
   useEffect(() => {
-    conversationsApi.list(currentUser).then(setConversations)
-  }, [currentUser])
+    if (!user) return
+    conversationsApi.list(user.id).then(setConversations)
+  }, [user])
 
   return (
     <div className="pb-20">

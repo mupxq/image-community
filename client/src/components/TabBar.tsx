@@ -1,6 +1,7 @@
 import { useLocation, useNavigate } from 'react-router-dom'
+import { useUser } from '../contexts/UserContext'
 
-const tabs = [
+const fullTabs = [
   { page: '/', icon: '🏠', label: '发现' },
   { page: '/shelf', icon: '📚', label: '书架' },
   { page: '/create', icon: '✨', label: '创作' },
@@ -8,10 +9,21 @@ const tabs = [
   { page: '/profile', icon: '👤', label: '我的' },
 ]
 
+const guestTabs = [
+  { page: '/', icon: '🏠', label: '发现' },
+  { page: '/login', icon: '🔐', label: '登录' },
+]
+
 export default function TabBar() {
   const location = useLocation()
   const navigate = useNavigate()
+  const { user } = useUser()
   const currentPath = location.pathname
+  const tabs = user ? fullTabs : guestTabs
+
+  // 登录/注册页不显示 TabBar（通过 CSS 隐藏）
+  const hideTabs = currentPath === '/login' || currentPath === '/register'
+  if (hideTabs) return null
 
   return (
     <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] bg-bg-card border-t border-border flex z-40">

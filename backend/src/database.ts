@@ -1,5 +1,6 @@
 import Database from 'better-sqlite3'
 import path from 'path'
+import bcrypt from 'bcryptjs'
 
 const db: InstanceType<typeof Database> = new Database(path.join(__dirname, '..', 'data.db'))
 
@@ -12,6 +13,8 @@ db.exec(`
   -- 用户表
   CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL,
     nickname TEXT NOT NULL,
     avatar TEXT DEFAULT '',
     bio TEXT DEFAULT '',
@@ -118,5 +121,18 @@ db.exec(`
     FOREIGN KEY (sender_id) REFERENCES users(id)
   );
 `)
+
+// 迁移：为已有数据库添加 username/password_hash 列
+const userColumns = db.prepare("PRAGMA table_info(users)").all() as { name: string }[]
+const columnNames = userColumns.map(c => c.name)
+if (!columnNames.includes('username')) {
+  db.exec('ALTER TABLE users ADD COLUMN username TEXT UNIQUE')
+  db.exec("ALTER TABLE users ADD COLUMN password_hash TEXT NOT NULL DEFAULT ''")
+  const hash = bcrypt.hashSync('123456', 10)
+  const oldUsers = db.prepare("SELECT id FROM users WHERE username IS NULL OR username = ''").all() as { id: number }[]
+  for (const u of oldUsers) {
+    db.prepare("UPDATE users SET username = ?, password_hash = ? WHERE id = ?").run(`user${u.id}`, hash, u.id)
+  }
+}
 
 export default db

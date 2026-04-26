@@ -27,15 +27,16 @@ const statusColors: Record<string, string> = { reading: 'bg-accent/20 text-accen
 export default function Shelf() {
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([])
   const [status, setStatus] = useState('all')
-  const { currentUser } = useUser()
+  const { user } = useUser()
   const navigate = useNavigate()
 
   const load = async () => {
-    const data = await bookmarksApi.list(currentUser, status)
+    if (!user) return
+    const data = await bookmarksApi.list(user.id, status)
     setBookmarks(data)
   }
 
-  useEffect(() => { load() }, [currentUser, status])
+  useEffect(() => { load() }, [user, status])
 
   const updateStatus = async (id: number, read_status: string) => {
     await bookmarksApi.update(id, { read_status })

@@ -1,6 +1,7 @@
 import { HashRouter, Routes, Route } from 'react-router-dom'
 import { UserProvider } from './contexts/UserContext'
 import TabBar from './components/TabBar'
+import ProtectedRoute from './components/ProtectedRoute'
 import Home from './pages/Home'
 import Shelf from './pages/Shelf'
 import Create from './pages/Create'
@@ -10,20 +11,24 @@ import Profile from './pages/Profile'
 import WorkDetail from './pages/WorkDetail'
 import CreationTree from './pages/CreationTree'
 import Fork from './pages/Fork'
+import Login from './pages/Login'
+import Register from './pages/Register'
 
 function AppLayout() {
   return (
     <>
       <Routes>
         <Route path="/" element={<Home />} />
-        <Route path="/shelf" element={<Shelf />} />
-        <Route path="/create" element={<Create />} />
-        <Route path="/messages" element={<Messages />} />
-        <Route path="/profile" element={<Profile />} />
+        <Route path="/login" element={<Login />} />
+        <Route path="/register" element={<Register />} />
         <Route path="/work/:id" element={<WorkDetail />} />
         <Route path="/work/:id/tree" element={<CreationTree />} />
-        <Route path="/fork/:id" element={<Fork />} />
-        <Route path="/chat/:id" element={<Chat />} />
+        <Route path="/shelf" element={<ProtectedRoute><Shelf /></ProtectedRoute>} />
+        <Route path="/create" element={<ProtectedRoute><Create /></ProtectedRoute>} />
+        <Route path="/messages" element={<ProtectedRoute><Messages /></ProtectedRoute>} />
+        <Route path="/fork/:id" element={<ProtectedRoute><Fork /></ProtectedRoute>} />
+        <Route path="/chat/:id" element={<ProtectedRoute><Chat /></ProtectedRoute>} />
+        <Route path="/profile" element={<Profile />} />
       </Routes>
       <TabBar />
     </>

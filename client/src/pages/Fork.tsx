@@ -2,22 +2,18 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { worksApi } from '../api'
 import type { WorkDetail as WorkDetailType, PageInput } from '../types'
-import { useUser } from '../contexts/UserContext'
 import BackHeader from '../components/BackHeader'
-import UserSelector from '../components/UserSelector'
 import PagesEditor from '../components/PagesEditor'
 
 export default function Fork() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const { currentUser, ensureUsers } = useUser()
   const [parentWork, setParentWork] = useState<WorkDetailType | null>(null)
   const [title, setTitle] = useState('')
   const [desc, setDesc] = useState('')
   const [pages, setPages] = useState<PageInput[]>([{ description: '', dialogue: '' }])
 
   useEffect(() => {
-    ensureUsers()
     if (!id) return
     worksApi.getById(Number(id)).then((w) => {
       setParentWork(w)
@@ -33,7 +29,6 @@ export default function Fork() {
     const result = await worksApi.fork(Number(id), {
       title: title.trim(),
       description: desc.trim(),
-      creator_id: currentUser,
       pages,
     })
     navigate(`/work/${result.id}`)
@@ -51,8 +46,6 @@ export default function Fork() {
           <div className="text-sm font-semibold mt-0.5">「{parentWork.title}」</div>
           <div className="text-xs text-text-secondary mt-0.5">by {parentWork.creator_name}</div>
         </div>
-
-        <UserSelector />
 
         <div>
           <label className="text-xs text-text-secondary">续写标题</label>
