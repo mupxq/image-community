@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { bookmarksApi } from '../api'
-import type { Bookmark } from '../types'
+import { bookmarksApi, subscriptionsApi } from '../api'
+import type { Bookmark, Subscription } from '../types'
 import { useUser } from '../contexts/UserContext'
 
 const statusFilters = [
@@ -9,6 +9,7 @@ const statusFilters = [
   { value: 'reading', label: '在读' },
   { value: 'want_read', label: '想读' },
   { value: 'finished', label: '已读完' },
+  { value: 'subscribed', label: '订阅' },
 ]
 
 const gradients = [
@@ -26,17 +27,28 @@ const statusColors: Record<string, string> = { reading: 'bg-accent/20 text-accen
 
 export default function Shelf() {
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([])
+  const [subscriptions, setSubscriptions] = useState<Subscription[]>([])
   const [status, setStatus] = useState('all')
   const { user } = useUser()
   const navigate = useNavigate()
 
   const load = async () => {
     if (!user) return
-    const data = await bookmarksApi.list(user.id, status)
-    setBookmarks(data)
+    if (status === 'subscribed') {
+      const data = await subscriptionsApi.list(user.id)
+      setSubscriptions(data)
+    } else {
+      const data = await bookmarksApi.list(user.id, status)
+      setBookmarks(data)
+    }
   }
 
   useEffect(() => { load() }, [user, status])
+
+  const handleSubClick = async (sub: Subscription) => {
+    await subscriptionsApi.markViewed(sub.work_id)
+    navigate(`/work/${sub.work_id}`)
+  }
 
   const updateStatus = async (id: number, read_status: string) => {
     await bookmarksApi.update(id, { read_status })
@@ -63,6 +75,49 @@ export default function Shelf() {
       </div>
 
       <div className="px-4 space-y-3 mt-2">
+        {/* 订阅列表 */}
+        {status === 'subscribed' && (
+          <>
+            {subscriptions.length === 0 && (
+              <div className="text-center py-20">
+                <div className="text-4xl">🔔</div>
+                <p className="text-sm text-text-secondary mt-3">还没有订阅作品</p>
+                <button onClick={() => navigate('/')} className="mt-3 px-6 py-2 bg-primary rounded-lg text-sm text-white">去发现页逛逛</button>
+              </div>
+            )}
+            {subscriptions.map((sub) => (
+              <div key={sub.id} onClick={() => handleSubClick(sub)} className="flex gap-3 bg-bg-card rounded-xl p-3 cursor-pointer hover:scale-[1.01] transition-transform relative">
+                <div className={`w-16 h-20 bg-gradient-to-br ${gradients[sub.work_id % gradients.length]} rounded-lg flex items-center justify-center text-xs text-white shrink-0`}>
+                  {sub.type === 'comic' ? '漫画' : sub.type === 'novel' ? '小说' : '短剧'}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-semibold truncate">{sub.title}</div>
+                  <div className="text-xs text-text-secondary mt-0.5">{sub.creator_avatar} {sub.creator_name}</div>
+                  <div className="text-[10px] text-text-secondary mt-1">
+                    {sub.total_pages}页 · {sub.current_fork_count}次续写
+                  </div>
+                  <div className="flex gap-1.5 mt-2" onClick={(e) => e.stopPropagation()}>
+                    <button
+                      onClick={() => subscriptionsApi.unsubscribe(sub.work_id).then(load)}
+                      className="text-[10px] px-2 py-0.5 bg-bg-secondary rounded text-text-secondary hover:text-accent-pink"
+                    >
+                      取消订阅
+                    </button>
+                  </div>
+                </div>
+                <span className={`absolute top-3 right-3 text-[10px] px-1.5 py-0.5 rounded-full ${
+                  sub.has_update ? 'bg-success/20 text-success' : 'bg-bg-secondary text-text-secondary'
+                }`}>
+                  {sub.has_update ? `● ${sub.new_fork_count}条更新` : '已是最新'}
+                </span>
+              </div>
+            ))}
+          </>
+        )}
+
+        {/* 书架列表 */}
+        {status !== 'subscribed' && (
+          <>
         {bookmarks.length === 0 && (
           <div className="text-center py-20">
             <div className="text-4xl">📚</div>
@@ -102,6 +157,8 @@ export default function Shelf() {
             </div>
           )
         })}
+          </>
+        )}
       </div>
     </div>
   )

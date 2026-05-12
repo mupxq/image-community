@@ -368,6 +368,56 @@ router.get('/bookmarks/check', (req: AuthRequest<{}, {}, {}, { work_id?: string 
   res.json({ bookmarked: !!bookmark, bookmark })
 })
 
+// ============ 订阅 API ============
+
+router.get('/users/:id/subscriptions', (req: Request<{ id: string }>, res: Response) => {
+  const subs = db.prepare(`
+    SELECT s.*, w.title, w.description, w.type, w.cover_image,
+      u.nickname as creator_name, u.avatar as creator_avatar,
+      (SELECT COUNT(*) FROM work_pages wp WHERE wp.work_id = w.id) as total_pages,
+      (SELECT COUNT(*) FROM works w2 WHERE w2.parent_work_id = w.id) as current_fork_count
+    FROM subscriptions s
+    JOIN works w ON s.work_id = w.id
+    JOIN users u ON w.creator_id = u.id
+    WHERE s.user_id = ?
+    ORDER BY s.created_at DESC
+  `).all(req.params.id) as any[]
+  const result = subs.map(s => ({
+    ...s,
+    has_update: (s.current_fork_count ?? 0) > (s.last_viewed_fork_count ?? 0),
+    new_fork_count: Math.max(0, (s.current_fork_count ?? 0) - (s.last_viewed_fork_count ?? 0)),
+  }))
+  res.json(result)
+})
+
+router.post('/subscriptions', requireAuth, (req: AuthRequest, res: Response) => {
+  const { work_id } = req.body as { work_id?: number }
+  if (!work_id) return res.status(400).json({ error: '参数缺失' })
+  const currentForkCount = (db.prepare('SELECT COUNT(*) as c FROM works WHERE parent_work_id = ?').get(work_id) as any).c
+  db.prepare('INSERT OR IGNORE INTO subscriptions (user_id, work_id, last_viewed_fork_count) VALUES (?, ?, ?)').run(req.userId, work_id, currentForkCount)
+  res.json({ message: '已订阅' })
+})
+
+router.delete('/subscriptions/:workId', requireAuth, (req: AuthRequest<{ workId: string }>, res: Response) => {
+  db.prepare('DELETE FROM subscriptions WHERE user_id = ? AND work_id = ?').run(req.userId, req.params.workId)
+  res.json({ message: '已取消订阅' })
+})
+
+router.get('/subscriptions/check', (req: AuthRequest<{}, {}, {}, { work_id?: string }>, res: Response) => {
+  const { work_id } = req.query
+  if (!req.userId || !work_id) {
+    return res.json({ subscribed: false, last_viewed_fork_count: 0 })
+  }
+  const sub = db.prepare('SELECT * FROM subscriptions WHERE user_id = ? AND work_id = ?').get(req.userId, work_id) as any
+  res.json({ subscribed: !!sub, last_viewed_fork_count: sub?.last_viewed_fork_count ?? 0 })
+})
+
+router.put('/subscriptions/:workId/viewed', requireAuth, (req: AuthRequest<{ workId: string }>, res: Response) => {
+  const currentForkCount = (db.prepare('SELECT COUNT(*) as c FROM works WHERE parent_work_id = ?').get(req.params.workId) as any).c
+  db.prepare('UPDATE subscriptions SET last_viewed_fork_count = ? WHERE user_id = ? AND work_id = ?').run(currentForkCount, req.userId, req.params.workId)
+  res.json({ message: '已更新' })
+})
+
 // ============ 消息 API ============
 
 interface ConversationRow extends Record<string, unknown> {

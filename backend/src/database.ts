@@ -187,6 +187,18 @@ db.exec(`
     FOREIGN KEY (following_id) REFERENCES users(id),
     UNIQUE(follower_id, following_id)
   );
+
+  -- 订阅表
+  CREATE TABLE IF NOT EXISTS subscriptions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    work_id INTEGER NOT NULL,
+    last_viewed_fork_count INTEGER DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id),
+    FOREIGN KEY (work_id) REFERENCES works(id),
+    UNIQUE(user_id, work_id)
+  );
 `)
 
 // 迁移：users 表加 credits 字段
