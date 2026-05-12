@@ -167,6 +167,24 @@ export interface AIGeneratePage {
   ai_generated: boolean
 }
 
+export interface Subscription {
+  id: number
+  user_id: number
+  work_id: number
+  last_viewed_fork_count: number
+  created_at: string
+  title: string
+  description: string
+  type: 'comic' | 'drama' | 'novel'
+  cover_image: string
+  creator_name: string
+  creator_avatar: string
+  total_pages: number
+  current_fork_count: number
+  has_update: boolean
+  new_fork_count: number
+}
+
 export interface AIGenerateResult {
   title: string
   description: string

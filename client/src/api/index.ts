@@ -134,6 +134,19 @@ export const followsApi = {
     request<import('../types').User[]>(`/users/${userId}/following`),
 }
 
+export const subscriptionsApi = {
+  list: (userId: number) =>
+    request<import('../types').Subscription[]>(`/users/${userId}/subscriptions`),
+  subscribe: (workId: number) =>
+    request<{ message: string }>('/subscriptions', { method: 'POST', body: JSON.stringify({ work_id: workId }) }),
+  unsubscribe: (workId: number) =>
+    request<{ message: string }>(`/subscriptions/${workId}`, { method: 'DELETE' }),
+  check: (workId: number) =>
+    request<{ subscribed: boolean; last_viewed_fork_count: number }>(`/subscriptions/check?work_id=${workId}`),
+  markViewed: (workId: number) =>
+    request<{ message: string }>(`/subscriptions/${workId}/viewed`, { method: 'PUT' }),
+}
+
 export const uploadApi = {
   image: async (file: File): Promise<{ url: string }> => {
     const formData = new FormData()

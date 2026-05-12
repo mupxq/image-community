@@ -8,7 +8,7 @@ import aiRoutes from './aiRoutes'
 import uploadRoutes from './uploadRoutes'
 import creditsRoutes from './creditsRoutes'
 import { optionalAuth } from './auth'
-// import seedData from './seed'
+import seedData from './seed'
 
 const app = express()
 const PORT = 3000
@@ -44,7 +44,7 @@ app.get(/.*/,  (_req, res) => {
   res.sendFile(path.join(clientDist, 'index.html'))
 })
 
-// seedData()
+seedData()
 
 app.listen(PORT, () => {
   console.log(`影像社区服务已启动: http://localhost:${PORT}`)

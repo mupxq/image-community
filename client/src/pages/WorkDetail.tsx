@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { worksApi, bookmarksApi, commentsApi, followsApi } from '../api'
+import { worksApi, bookmarksApi, commentsApi, followsApi, subscriptionsApi } from '../api'
 import type { WorkDetail as WorkDetailType, WorkPage, Comment } from '../types'
 import { useUser } from '../contexts/UserContext'
 import BackHeader from '../components/BackHeader'
@@ -15,6 +15,8 @@ export default function WorkDetail() {
   const [comments, setComments] = useState<Comment[]>([])
   const [followingMap, setFollowingMap] = useState<Record<number, boolean>>({})
   const [followLoading, setFollowLoading] = useState<Record<number, boolean>>({})
+  const [isSubscribed, setIsSubscribed] = useState(false)
+  const [subLoading, setSubLoading] = useState(false)
 
   useEffect(() => {
     if (!id) return
@@ -27,7 +29,10 @@ export default function WorkDetail() {
       setPages(p)
       setComments(c)
     })
-  }, [id])
+    if (user) {
+      subscriptionsApi.check(Number(id)).then((s) => setIsSubscribed(s.subscribed)).catch(() => {})
+    }
+  }, [id, user])
 
   useEffect(() => {
     if (!user || !work) return
@@ -57,6 +62,24 @@ export default function WorkDetail() {
       // ignore
     } finally {
       setFollowLoading((prev) => ({ ...prev, [targetId]: false }))
+    }
+  }
+
+  const handleSubscribe = async () => {
+    if (!user || !work) { navigate('/login'); return }
+    setSubLoading(true)
+    try {
+      if (isSubscribed) {
+        await subscriptionsApi.unsubscribe(work.id)
+        setIsSubscribed(false)
+      } else {
+        await subscriptionsApi.subscribe(work.id)
+        setIsSubscribed(true)
+      }
+    } catch (err: any) {
+      // ignore
+    } finally {
+      setSubLoading(false)
     }
   }
 
@@ -191,6 +214,17 @@ export default function WorkDetail() {
             className="flex-1 py-2.5 bg-bg-card border border-border rounded-lg text-sm hover:border-primary transition-colors"
           >
             分享
+          </button>
+          <button
+            onClick={handleSubscribe}
+            disabled={subLoading}
+            className={`flex-1 py-2.5 rounded-lg text-sm transition-colors ${
+              isSubscribed
+                ? 'bg-bg-card border border-border hover:text-accent-pink'
+                : 'bg-bg-card border border-border hover:border-primary'
+            }`}
+          >
+            {isSubscribed ? '已订阅' : '订阅'}
           </button>
         </div>
 
