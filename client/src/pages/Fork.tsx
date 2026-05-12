@@ -45,7 +45,7 @@ export default function Fork() {
   if (!parentWork) return <div className="p-4 text-text-secondary">加载中...</div>
 
   return (
-    <div className="pb-20">
+    <div className="pb-20 md:pb-6 md:max-w-[700px] md:mx-auto">
       <BackHeader title="续写创作" />
 
       <div className="px-4 space-y-4">

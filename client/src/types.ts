@@ -64,6 +64,8 @@ export interface Comment {
   created_at: string
   nickname: string
   avatar: string
+  parent_id: number | null
+  reply_to_name: string | null
 }
 
 export interface Bookmark {

@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { usersApi, creditsApi, tasksApi } from '../api'
+import { usersApi, creditsApi, tasksApi, followsApi } from '../api'
 import type { Work } from '../types'
 import { useUser } from '../contexts/UserContext'
+import UserAvatar from '../components/UserAvatar'
 
 export default function Profile() {
   const navigate = useNavigate()
@@ -16,6 +17,9 @@ export default function Profile() {
   const [tasks, setTasks] = useState<any[]>([])
   const [creditLogs, setCreditLogs] = useState<any[]>([])
   const [showLogs, setShowLogs] = useState(false)
+  const [followerCount, setFollowerCount] = useState(0)
+  const [followingCount, setFollowingCount] = useState(0)
+  const avatarInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (!user) return
@@ -36,6 +40,10 @@ export default function Profile() {
     }).catch(() => {})
     tasksApi.list().then(setTasks).catch(() => {})
     creditsApi.logs().then(setCreditLogs).catch(() => {})
+    usersApi.getById(user.id).then((u: any) => {
+      setFollowerCount(u.followerCount || 0)
+      setFollowingCount(u.followingCount || 0)
+    }).catch(() => {})
   }, [user])
 
   const handleCheckIn = async () => {
@@ -54,7 +62,7 @@ export default function Profile() {
   // 未登录：显示登录引导
   if (!user) {
     return (
-      <div className="pb-20">
+      <div className="pb-20 md:pb-6 md:max-w-[700px] md:mx-auto">
         <div className="px-4 pt-5">
           <div className="bg-bg-card rounded-2xl p-8 text-center">
             <div className="text-5xl mb-4">👤</div>
@@ -73,21 +81,38 @@ export default function Profile() {
   }
 
   return (
-    <div className="pb-20">
+    <div className="pb-20 md:pb-6 md:max-w-[700px] md:mx-auto">
       <div className="px-4 pt-5 pb-3">
         <div className="bg-bg-card rounded-2xl p-5 text-center">
-          <div className="text-4xl">{user.avatar || '👤'}</div>
+          <div className="flex justify-center">
+            <div className="relative cursor-pointer" onClick={() => avatarInputRef.current?.click()}>
+              <UserAvatar avatar={user.avatar} nickname={user.nickname} size="lg" />
+              <span className="absolute bottom-0 right-0 w-5 h-5 bg-primary rounded-full flex items-center justify-center text-white text-[10px]">+</span>
+            </div>
+            <input ref={avatarInputRef} type="file" accept="image/*" className="hidden" onChange={async (e) => {
+              const file = e.target.files?.[0]
+              if (!file) return
+              try {
+                const res = await usersApi.uploadAvatar(file)
+                window.location.reload()
+              } catch (err: any) { alert(err.message || '上传失败') }
+            }} />
+          </div>
           <div className="text-lg font-bold mt-2">{user.nickname}</div>
           <div className="text-xs text-text-secondary mt-1">{user.bio}</div>
           <div className="text-[10px] text-text-secondary mt-1">@{user.username}</div>
           <div className="flex justify-center gap-6 mt-4">
             <div className="text-center">
               <div className="text-xl font-bold">{works.length}</div>
-              <div className="text-[10px] text-text-secondary">我的作品</div>
+              <div className="text-[10px] text-text-secondary">作品</div>
             </div>
-            <div className="text-center">
-              <div className="text-xl font-bold">{coCreated.length}</div>
-              <div className="text-[10px] text-text-secondary">参与共创</div>
+            <div className="text-center cursor-pointer" onClick={() => navigate(`/user/${user.id}/followers`)}>
+              <div className="text-xl font-bold">{followerCount}</div>
+              <div className="text-[10px] text-text-secondary">粉丝</div>
+            </div>
+            <div className="text-center cursor-pointer" onClick={() => navigate(`/user/${user.id}/following`)}>
+              <div className="text-xl font-bold">{followingCount}</div>
+              <div className="text-[10px] text-text-secondary">关注</div>
             </div>
             <div className="text-center">
               <div className="text-xl font-bold text-primary">{credits ?? '...'}</div>

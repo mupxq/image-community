@@ -1,6 +1,17 @@
 import { Router, type Request, type Response } from 'express'
+import multer from 'multer'
+import path from 'path'
 import db from './database'
 import { requireAuth, type AuthRequest } from './auth'
+
+const avatarStorage = multer.diskStorage({
+  destination: path.join(__dirname, '..', 'public', 'uploads'),
+  filename: (_req, file, cb) => {
+    const ext = path.extname(file.originalname) || '.png'
+    cb(null, `avatar-${Date.now()}-${Math.random().toString(36).slice(2, 8)}${ext}`)
+  },
+})
+const avatarUpload = multer({ storage: avatarStorage, limits: { fileSize: 5 * 1024 * 1024 } })
 
 const router = Router()
 
@@ -40,6 +51,14 @@ router.get('/users/:id/contributions', (req: Request<{ id: string }>, res: Respo
     ORDER BY c.joined_at DESC
   `).all(req.params.id)
   res.json(works)
+})
+
+// 上传头像
+router.post('/users/avatar', requireAuth, avatarUpload.single('avatar'), (req: AuthRequest, res: Response) => {
+  if (!req.file) { res.status(400).json({ error: '请选择图片' }); return }
+  const url = `/uploads/${req.file.filename}`
+  db.prepare('UPDATE users SET avatar = ? WHERE id = ?').run(url, req.userId)
+  res.json({ avatar: url })
 })
 
 // ============ 关注 API ============
@@ -205,11 +224,12 @@ interface PageInput {
 }
 
 router.post('/works', requireAuth, (req: AuthRequest, res: Response) => {
-  const { title, description, type, pages } = req.body as {
+  const { title, description, type, pages, cover_image } = req.body as {
     title: string
     description?: string
     type?: string
     pages?: PageInput[]
+    cover_image?: string
   }
   const creator_id = req.userId!
 
@@ -218,9 +238,9 @@ router.post('/works', requireAuth, (req: AuthRequest, res: Response) => {
   }
 
   const result = db.prepare(`
-    INSERT INTO works (title, description, type, creator_id, status)
-    VALUES (?, ?, ?, ?, 'published')
-  `).run(title, description || '', type || 'comic', creator_id)
+    INSERT INTO works (title, description, type, creator_id, cover_image, status)
+    VALUES (?, ?, ?, ?, ?, 'published')
+  `).run(title, description || '', type || 'comic', creator_id, cover_image || '')
 
   const workId = Number(result.lastInsertRowid)
 
@@ -241,10 +261,11 @@ router.post('/works/:id/fork', requireAuth, (req: AuthRequest<{ id: string }>, r
   const parentWork = db.prepare('SELECT * FROM works WHERE id = ?').get(req.params.id) as WorkRow | undefined
   if (!parentWork) return res.status(404).json({ error: '原作品不存在' })
 
-  const { title, description, pages } = req.body as {
+  const { title, description, pages, cover_image } = req.body as {
     title: string
     description?: string
     pages?: PageInput[]
+    cover_image?: string
   }
   const creator_id = req.userId!
 
@@ -255,9 +276,9 @@ router.post('/works/:id/fork', requireAuth, (req: AuthRequest<{ id: string }>, r
   const rootId = parentWork.root_work_id || parentWork.id
 
   const result = db.prepare(`
-    INSERT INTO works (title, description, type, creator_id, parent_work_id, root_work_id, status)
-    VALUES (?, ?, ?, ?, ?, ?, 'published')
-  `).run(title, description || '', parentWork.type, creator_id, parentWork.id, rootId)
+    INSERT INTO works (title, description, type, creator_id, parent_work_id, root_work_id, cover_image, status)
+    VALUES (?, ?, ?, ?, ?, ?, ?, 'published')
+  `).run(title, description || '', parentWork.type, creator_id, parentWork.id, rootId, cover_image || '')
 
   const workId = Number(result.lastInsertRowid)
 
@@ -287,9 +308,12 @@ router.post('/works/:id/fork', requireAuth, (req: AuthRequest<{ id: string }>, r
 
 router.get('/works/:id/comments', (req: Request<{ id: string }>, res: Response) => {
   const comments = db.prepare(`
-    SELECT c.*, u.nickname, u.avatar
+    SELECT c.*, u.nickname, u.avatar,
+      ru.nickname as reply_to_name
     FROM comments c
     JOIN users u ON c.user_id = u.id
+    LEFT JOIN comments pc ON c.parent_id = pc.id
+    LEFT JOIN users ru ON pc.user_id = ru.id
     WHERE c.work_id = ?
     ORDER BY c.created_at ASC
   `).all(req.params.id)
@@ -297,11 +321,33 @@ router.get('/works/:id/comments', (req: Request<{ id: string }>, res: Response) 
 })
 
 router.post('/works/:id/comments', requireAuth, (req: AuthRequest<{ id: string }>, res: Response) => {
-  const { content } = req.body as { content?: string }
+  const { content, parent_id } = req.body as { content?: string; parent_id?: number }
   if (!content) {
     return res.status(400).json({ error: '内容必填' })
   }
-  db.prepare('INSERT INTO comments (work_id, user_id, content) VALUES (?, ?, ?)').run(req.params.id, req.userId, content)
+  const result = db.prepare('INSERT INTO comments (work_id, user_id, content, parent_id) VALUES (?, ?, ?, ?)').run(req.params.id, req.userId, content, parent_id || null)
+  const commentId = Number(result.lastInsertRowid)
+
+  // 发送系统通知给作品作者
+  const work = db.prepare('SELECT creator_id, title FROM works WHERE id = ?').get(req.params.id) as { creator_id: number; title: string } | undefined
+  if (work && work.creator_id !== req.userId) {
+    // 查找或创建与作者的系统通知会话
+    let conv = db.prepare(`SELECT c.id FROM conversations c JOIN conversation_members cm ON c.id = cm.conversation_id WHERE c.type = 'private' AND cm.user_id = ? AND c.id IN (SELECT conversation_id FROM conversation_members WHERE user_id = 0)`).get(work.creator_id) as { id: number } | undefined
+
+    if (!conv) {
+      // 创建系统通知会话（sender_id=0 作为系统用户）
+      const convResult = db.prepare("INSERT INTO conversations (type, title) VALUES ('private', '系统通知')").run()
+      const convId = Number(convResult.lastInsertRowid)
+      db.prepare('INSERT OR IGNORE INTO conversation_members (conversation_id, user_id) VALUES (?, ?)').run(convId, work.creator_id)
+      db.prepare('INSERT OR IGNORE INTO conversation_members (conversation_id, user_id) VALUES (?, ?)').run(convId, 0)
+      conv = { id: convId }
+    }
+
+    const commenter = db.prepare('SELECT nickname FROM users WHERE id = ?').get(req.userId) as { nickname: string }
+    const msgContent = JSON.stringify({ type: 'comment_notify', workId: Number(req.params.id), workTitle: work.title, commentId, commenterName: commenter.nickname, text: content.substring(0, 50) })
+    db.prepare("INSERT INTO messages (conversation_id, sender_id, content, msg_type) VALUES (?, 0, ?, 'system')").run(conv.id, msgContent)
+  }
+
   res.json({ message: '评论成功' })
 })
 
@@ -383,8 +429,9 @@ router.get('/users/:id/conversations', (req: Request<{ id: string }>, res: Respo
   const conversations = db.prepare(`
     SELECT c.*,
       (SELECT content FROM messages m WHERE m.conversation_id = c.id ORDER BY m.created_at DESC LIMIT 1) as last_message,
-      (SELECT u2.nickname FROM messages m2 JOIN users u2 ON m2.sender_id = u2.id WHERE m2.conversation_id = c.id ORDER BY m2.created_at DESC LIMIT 1) as last_sender,
-      (SELECT m3.created_at FROM messages m3 WHERE m3.conversation_id = c.id ORDER BY m3.created_at DESC LIMIT 1) as last_message_time
+      (SELECT COALESCE(u2.nickname, '系统') FROM messages m2 LEFT JOIN users u2 ON m2.sender_id = u2.id WHERE m2.conversation_id = c.id ORDER BY m2.created_at DESC LIMIT 1) as last_sender,
+      (SELECT m3.created_at FROM messages m3 WHERE m3.conversation_id = c.id ORDER BY m3.created_at DESC LIMIT 1) as last_message_time,
+      (SELECT m4.msg_type FROM messages m4 WHERE m4.conversation_id = c.id ORDER BY m4.created_at DESC LIMIT 1) as last_msg_type
     FROM conversations c
     JOIN conversation_members cm ON c.id = cm.conversation_id
     WHERE cm.user_id = ?
@@ -398,7 +445,7 @@ router.get('/users/:id/conversations', (req: Request<{ id: string }>, res: Respo
       SELECT u.id, u.nickname, u.avatar
       FROM conversation_members cm
       JOIN users u ON cm.user_id = u.id
-      WHERE cm.conversation_id = ?
+      WHERE cm.conversation_id = ? AND cm.user_id != 0
     `).all(conv.id) as MemberRow[]
 
     let displayName: string = conv.title
@@ -408,6 +455,9 @@ router.get('/users/:id/conversations', (req: Request<{ id: string }>, res: Respo
       if (other) {
         displayName = other.nickname
         displayAvatar = other.avatar
+      } else if (conv.title === '系统通知') {
+        displayName = '系统通知'
+        displayAvatar = ''
       }
     }
 
@@ -419,9 +469,9 @@ router.get('/users/:id/conversations', (req: Request<{ id: string }>, res: Respo
 
 router.get('/conversations/:id/messages', (req: Request<{ id: string }>, res: Response) => {
   const messages = db.prepare(`
-    SELECT m.*, u.nickname as sender_name, u.avatar as sender_avatar
+    SELECT m.*, COALESCE(u.nickname, '系统') as sender_name, COALESCE(u.avatar, '') as sender_avatar
     FROM messages m
-    JOIN users u ON m.sender_id = u.id
+    LEFT JOIN users u ON m.sender_id = u.id
     WHERE m.conversation_id = ?
     ORDER BY m.created_at ASC
   `).all(req.params.id)

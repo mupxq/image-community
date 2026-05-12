@@ -23,6 +23,8 @@ export function buildTextBreakdownPrompt(req: TextBreakdownRequest): string {
 {
   "title": "作品标题",
   "description": "作品简介（一句话）",
+  "hookDescription": "吸引读者的推荐语（30-50字，制造悬念，不剧透关键剧情，让人想点进来看）",
+  "coverPrompt": "cover illustration prompt in English (vertical composition, character portrait or key scene, atmospheric, cinematic lighting, book cover style)",
   "pages": [
     {
       "pageNumber": 1,
@@ -37,7 +39,9 @@ export function buildTextBreakdownPrompt(req: TextBreakdownRequest): string {
 1. 每章正文放在 description 字段，章节标题放在 dialogue 字段
 2. 故事要有起承转合，节奏合理
 3. 文笔流畅，有画面感和代入感
-4. imagePrompt 留空字符串`
+4. imagePrompt 留空字符串
+5. hookDescription 是面向读者的推荐语，要吸引人但不能剧透
+6. coverPrompt 用英文描述一张适合做封面的竖版海报画面，包含主角形象和氛围`
   }
 
   return `你是一个专业的${typeLabel}分镜编剧。请根据以下梗概，创作一个${req.pageCount}页的${typeLabel}分镜脚本。
@@ -50,6 +54,8 @@ export function buildTextBreakdownPrompt(req: TextBreakdownRequest): string {
 {
   "title": "作品标题",
   "description": "作品简介（一句话）",
+  "hookDescription": "吸引读者的推荐语（30-50字，制造悬念，不剧透关键剧情，让人想点进来看）",
+  "coverPrompt": "cover poster prompt in English (vertical composition, main character portrait or key dramatic scene, ${req.style} style, atmospheric, cinematic, poster layout)",
   "pages": [
     {
       "pageNumber": 1,
@@ -65,7 +71,9 @@ export function buildTextBreakdownPrompt(req: TextBreakdownRequest): string {
 2. 故事要有起承转合，节奏合理
 3. 场景描述和图片提示词要具体，有画面感
 4. 对白要自然、有个性
-5. imagePrompt 不需要包含对白文字，因为文字会在画面中叠加显示`
+5. imagePrompt 不需要包含对白文字，因为文字会在画面中叠加显示
+6. hookDescription 是面向读者的推荐语，要吸引人但不能剧透
+7. coverPrompt 用英文描述一张适合做封面海报的竖版画面，突出主角形象和故事氛围`
 }
 
 export function buildImagePrompt(page: PageBreakdown, style: string, type: 'comic' | 'drama' | 'novel'): string {

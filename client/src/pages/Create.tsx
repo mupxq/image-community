@@ -22,6 +22,8 @@ export default function Create() {
   const [desc, setDesc] = useState('')
   const [type, setType] = useState<'comic' | 'drama' | 'novel'>('comic')
   const [pages, setPages] = useState<PageInput[]>([{ description: '', dialogue: '' }])
+  const [coverImage, setCoverImage] = useState('')
+  const [coverUploading, setCoverUploading] = useState(false)
 
   // AI fields
   const [aiType, setAiType] = useState<'comic' | 'drama' | 'novel'>('comic')
@@ -101,7 +103,7 @@ export default function Create() {
   const submitManual = async () => {
     if (!title.trim()) return alert('请输入标题')
     if (!pages[0]?.description.trim()) return alert('请至少填写第一页场景描述')
-    await worksApi.create({ title: title.trim(), description: desc.trim(), type, pages })
+    await worksApi.create({ title: title.trim(), description: desc.trim(), type, pages, cover_image: coverImage || undefined })
     navigate('/')
   }
 
@@ -189,7 +191,7 @@ export default function Create() {
   }
 
   return (
-    <div className="pb-20">
+    <div className="pb-20 md:pb-6 md:max-w-[700px] md:mx-auto">
       <div className="sticky top-0 z-10 bg-gradient-to-br from-bg to-bg-secondary px-4 pt-5 pb-3">
         <h1 className="text-2xl font-bold bg-gradient-to-r from-accent to-primary-light bg-clip-text text-transparent">创作</h1>
       </div>
@@ -268,6 +270,29 @@ export default function Create() {
             ) : (
               <PagesEditor pages={pages} onChange={setPages} showUpload onUploadPage={handleUpload} />
             )}
+            <div>
+              <label className="text-xs text-text-secondary">封面图片（可选）</label>
+              {coverImage ? (
+                <div className="mt-1 relative">
+                  <img src={coverImage} className="w-full h-32 object-cover rounded-lg" />
+                  <button onClick={() => setCoverImage('')} className="absolute top-1 right-1 w-5 h-5 bg-black/50 rounded-full text-white text-xs flex items-center justify-center">x</button>
+                </div>
+              ) : (
+                <label className="mt-1 flex items-center justify-center h-20 bg-bg-card border border-dashed border-border rounded-lg cursor-pointer hover:border-primary transition-colors">
+                  <span className="text-xs text-text-secondary">{coverUploading ? '上传中...' : '点击上传封面'}</span>
+                  <input type="file" accept="image/*" className="hidden" onChange={async (e) => {
+                    const file = e.target.files?.[0]
+                    if (!file) return
+                    setCoverUploading(true)
+                    try {
+                      const res = await uploadApi.image(file)
+                      setCoverImage(res.url)
+                    } catch { alert('上传失败') }
+                    finally { setCoverUploading(false) }
+                  }} />
+                </label>
+              )}
+            </div>
             <button onClick={submitManual} className="w-full py-3 bg-primary rounded-lg text-sm text-white font-medium hover:bg-primary-light transition-colors">发布作品</button>
           </>
         ) : aiGenerating ? (

@@ -40,6 +40,19 @@ export const usersApi = {
   getById: (id: number) => request<import('../types').User>(`/users/${id}`),
   getWorks: (id: number) => request<import('../types').Work[]>(`/users/${id}/works`),
   getContributions: (id: number) => request<import('../types').Work[]>(`/users/${id}/contributions`),
+  uploadAvatar: async (file: File): Promise<{ avatar: string }> => {
+    const formData = new FormData()
+    formData.append('avatar', file)
+    const headers: Record<string, string> = {}
+    const token = getToken()
+    if (token) headers['Authorization'] = `Bearer ${token}`
+    const res = await fetch(`${API}/users/avatar`, { method: 'POST', headers, body: formData })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: '上传失败' }))
+      throw new Error(err.error)
+    }
+    return res.json()
+  },
 }
 
 export const worksApi = {
@@ -53,15 +66,15 @@ export const worksApi = {
   getById: (id: number) => request<import('../types').WorkDetail>(`/works/${id}`),
   getPages: (id: number) => request<import('../types').WorkPage[]>(`/works/${id}/pages`),
   getTree: (id: number) => request<import('../types').TreeNode>(`/works/${id}/tree`),
-  create: (data: { title: string; description: string; type: string; pages?: import('../types').PageInput[] }) =>
+  create: (data: { title: string; description: string; type: string; pages?: import('../types').PageInput[]; cover_image?: string }) =>
     request<{ id: number; message: string }>('/works', { method: 'POST', body: JSON.stringify(data) }),
-  fork: (parentId: number, data: { title: string; description: string; pages?: import('../types').PageInput[] }) =>
+  fork: (parentId: number, data: { title: string; description: string; pages?: import('../types').PageInput[]; cover_image?: string }) =>
     request<{ id: number; message: string }>(`/works/${parentId}/fork`, { method: 'POST', body: JSON.stringify(data) }),
 }
 
 export const commentsApi = {
   list: (workId: number) => request<import('../types').Comment[]>(`/works/${workId}/comments`),
-  create: (workId: number, data: { content: string }) =>
+  create: (workId: number, data: { content: string; parent_id?: number }) =>
     request<{ message: string }>(`/works/${workId}/comments`, { method: 'POST', body: JSON.stringify(data) }),
 }
 
@@ -97,6 +110,8 @@ export const aiApi = {
     request<import('../types').AIGenerateResult>('/ai/generate-custom', { method: 'POST', body: JSON.stringify(data) }),
   generatePage: (data: { provider: string; style: string; type: string; imagePrompt: string; dialogue: string }) =>
     request<{ image_url: string; ai_generated: boolean }>('/ai/generate-page', { method: 'POST', body: JSON.stringify(data) }),
+  generateCover: (data: { coverPrompt: string; provider?: string; style?: string; customConfig?: { baseUrl: string; apiKey: string; model: string } }) =>
+    request<{ cover_image: string }>('/ai/generate-cover', { method: 'POST', body: JSON.stringify(data) }),
   getConfig: () =>
     request<{ text_base_url: string; text_api_key: string; text_model: string; image_base_url: string; image_api_key: string; image_model: string }>('/ai/config'),
   saveConfig: (data: { text_base_url: string; text_api_key: string; text_model: string; image_base_url: string; image_api_key: string; image_model: string }) =>
@@ -117,7 +132,7 @@ export const tasksApi = {
     request<{ id: number; status: string; type: string; credits_used: number; created_at: string; completed_at: string | null; error: string | null }[]>('/ai/tasks'),
   getById: (id: number) =>
     request<any>(`/ai/tasks/${id}`),
-  publish: (id: number, data?: { title?: string; description?: string }) =>
+  publish: (id: number, data?: { title?: string; description?: string; cover_image?: string }) =>
     request<{ id: number; message: string }>(`/ai/tasks/${id}/publish`, { method: 'POST', body: JSON.stringify(data || {}) }),
 }
 

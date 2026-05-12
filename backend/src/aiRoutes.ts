@@ -91,7 +91,7 @@ router.post('/generate', requireAuth, async (req: AuthRequest, res: Response) =>
 
       console.log(`[任务${taskId}] 完成，扣费${actualCredits}积分`)
 
-      const result = JSON.stringify({ title: textResult.title, description: textResult.description, pages })
+      const result = JSON.stringify({ title: textResult.title, description: textResult.description, hookDescription: textResult.hookDescription, coverPrompt: textResult.coverPrompt, pages })
       db.prepare('UPDATE generation_tasks SET status = ?, result = ?, credits_used = ?, completed_at = CURRENT_TIMESTAMP WHERE id = ?').run('completed', result, actualCredits, taskId)
     } catch (err: any) {
       console.error(`[任务${taskId}] 失败:`, err.message)
@@ -123,12 +123,12 @@ router.post('/tasks/:id/publish', requireAuth, (req: AuthRequest, res: Response)
   if (!task.result) { res.status(400).json({ error: '任务无生成结果' }); return }
 
   const result = JSON.parse(task.result)
-  const { title: customTitle, description: customDesc } = req.body as { title?: string; description?: string }
+  const { title: customTitle, description: customDesc, cover_image } = req.body as { title?: string; description?: string; cover_image?: string }
   const title = customTitle || result.title
-  const description = customDesc || result.description
+  const description = customDesc || result.hookDescription || result.description
 
   // 创建作品
-  const workResult = db.prepare('INSERT INTO works (title, description, type, creator_id, status) VALUES (?, ?, ?, ?, ?)').run(title, description, task.type, req.userId, 'published')
+  const workResult = db.prepare('INSERT INTO works (title, description, type, creator_id, cover_image, status) VALUES (?, ?, ?, ?, ?, ?)').run(title, description, task.type, req.userId, cover_image || '', 'published')
   const workId = Number(workResult.lastInsertRowid)
   db.prepare('UPDATE works SET root_work_id = ? WHERE id = ?').run(workId, workId)
   db.prepare('INSERT INTO contributors (work_id, user_id, role) VALUES (?, ?, ?)').run(workId, req.userId, 'creator')
@@ -139,6 +139,60 @@ router.post('/tasks/:id/publish', requireAuth, (req: AuthRequest, res: Response)
   }
 
   res.json({ id: workId, message: '作品已发布' })
+})
+
+// 生成封面图
+router.post('/generate-cover', requireAuth, async (req: AuthRequest, res: Response) => {
+  const { coverPrompt, provider, style } = req.body
+
+  if (!coverPrompt) {
+    res.status(400).json({ error: '缺少封面提示词' })
+    return
+  }
+
+  // 支持平台 provider 或自定义 config
+  const { customConfig } = req.body
+  let imageUrl: string | undefined
+
+  try {
+    if (customConfig && customConfig.baseUrl && customConfig.apiKey && customConfig.model) {
+      // 自定义 API
+      const url = `${customConfig.baseUrl}/images/generations`
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${customConfig.apiKey}` },
+        body: JSON.stringify({ model: customConfig.model, prompt: coverPrompt, size: '1024x1024', n: 1 }),
+      })
+      if (resp.ok) {
+        const data = await resp.json() as any
+        const remoteUrl = data?.data?.[0]?.url || data?.data?.[0]?.b64_json
+        if (remoteUrl) {
+          const { downloadAndSaveImage } = await import('./ai/storage')
+          imageUrl = await downloadAndSaveImage(remoteUrl)
+        }
+      }
+    } else if (provider) {
+      // 平台 provider
+      const imageP = registry.getImageProvider(provider)
+      if (!imageP) {
+        res.status(400).json({ error: `未知的图片 Provider: ${provider}` })
+        return
+      }
+      const result = await imageP.generateImage({ prompt: coverPrompt, style: style || '', size: '1024x1024' })
+      if (result.success) imageUrl = result.imageUrl
+    } else {
+      res.status(400).json({ error: '需要指定 provider 或 customConfig' })
+      return
+    }
+
+    if (!imageUrl) {
+      res.status(500).json({ error: '封面生成失败' })
+      return
+    }
+    res.json({ cover_image: imageUrl })
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || '封面生成失败' })
+  }
 })
 
 // 单页重新生图
@@ -266,7 +320,7 @@ router.post('/generate-custom', requireAuth, async (req: AuthRequest, res: Respo
       }
 
       console.log(`[任务${taskId}] 自定义API生成完成`)
-      const result = JSON.stringify({ title: textResult.title, description: textResult.description, pages })
+      const result = JSON.stringify({ title: textResult.title, description: textResult.description, hookDescription: textResult.hookDescription, coverPrompt: textResult.coverPrompt, pages })
       db.prepare('UPDATE generation_tasks SET status = ?, result = ?, credits_used = 0, completed_at = CURRENT_TIMESTAMP WHERE id = ?').run('completed', result, taskId)
     } catch (err: any) {
       console.error(`[任务${taskId}] 自定义API失败:`, err.message)

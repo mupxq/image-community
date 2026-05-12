@@ -208,4 +208,10 @@ if (!columnNames.includes('username')) {
   }
 }
 
+// 迁移：comments 表加 parent_id 字段（支持回复）
+const commentCols = (db.prepare("PRAGMA table_info(comments)").all() as { name: string }[]).map(c => c.name)
+if (!commentCols.includes('parent_id')) {
+  db.exec("ALTER TABLE comments ADD COLUMN parent_id INTEGER DEFAULT NULL")
+}
+
 export default db
