@@ -45,6 +45,16 @@ export default function WorkDetail() {
     alert('已加入书架')
   }
 
+  const handleDeleteWork = async () => {
+    if (!work || !confirm('确定删除此作品？删除后无法恢复。')) return
+    try {
+      await worksApi.delete(work.id)
+      navigate('/profile')
+    } catch (err: any) {
+      alert(err.message || '删除失败')
+    }
+  }
+
   if (!work) return <div className="p-4 text-text-secondary">加载中...</div>
 
   const pagesContent = (
@@ -146,6 +156,14 @@ export default function WorkDetail() {
           分享
         </button>
       </div>
+      {user && user.id === work.creator_id && (
+        <button
+          onClick={handleDeleteWork}
+          className="w-full py-2.5 bg-bg-card border border-accent-pink/30 rounded-lg text-sm text-accent-pink hover:bg-accent-pink/10 transition-colors"
+        >
+          删除作品
+        </button>
+      )}
 
       {/* Comments */}
       <CommentSection workId={work.id} comments={comments} highlightId={highlightCommentId} />
@@ -214,6 +232,14 @@ export default function WorkDetail() {
             分享
           </button>
         </div>
+        {user && user.id === work.creator_id && (
+          <button
+            onClick={handleDeleteWork}
+            className="w-full py-2.5 bg-bg-card border border-accent-pink/30 rounded-lg text-sm text-accent-pink hover:bg-accent-pink/10 transition-colors"
+          >
+            删除作品
+          </button>
+        )}
         <CommentSection workId={work.id} comments={comments} highlightId={highlightCommentId} />
       </div>
 

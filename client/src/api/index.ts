@@ -70,6 +70,8 @@ export const worksApi = {
     request<{ id: number; message: string }>('/works', { method: 'POST', body: JSON.stringify(data) }),
   fork: (parentId: number, data: { title: string; description: string; pages?: import('../types').PageInput[]; cover_image?: string }) =>
     request<{ id: number; message: string }>(`/works/${parentId}/fork`, { method: 'POST', body: JSON.stringify(data) }),
+  delete: (id: number) =>
+    request<{ message: string }>(`/works/${id}`, { method: 'DELETE' }),
 }
 
 export const commentsApi = {
@@ -134,6 +136,12 @@ export const tasksApi = {
     request<any>(`/ai/tasks/${id}`),
   publish: (id: number, data?: { title?: string; description?: string; cover_image?: string }) =>
     request<{ id: number; message: string }>(`/ai/tasks/${id}/publish`, { method: 'POST', body: JSON.stringify(data || {}) }),
+  cancel: (id: number) =>
+    request<{ message: string }>(`/ai/tasks/${id}/cancel`, { method: 'POST' }),
+  delete: (id: number) =>
+    request<{ message: string }>(`/ai/tasks/${id}`, { method: 'DELETE' }),
+  regenerate: (id: number) =>
+    request<{ taskId: number; message: string }>(`/ai/tasks/${id}/regenerate`, { method: 'POST' }),
 }
 
 export const followsApi = {

@@ -153,7 +153,7 @@ export default function Profile() {
         <div className="px-4 space-y-2">
           <h3 className="text-sm font-semibold">创作任务</h3>
           {tasks.map((t) => (
-            <div key={t.id} onClick={() => t.status === 'completed' && navigate(`/task/${t.id}`)} className={`flex items-center justify-between bg-bg-card rounded-lg p-3 ${t.status === 'completed' ? 'cursor-pointer hover:scale-[1.01] transition-transform' : ''}`}>
+            <div key={t.id} onClick={() => navigate(`/task/${t.id}`)} className="flex items-center justify-between bg-bg-card rounded-lg p-3 cursor-pointer hover:scale-[1.01] transition-transform">
               <div className="flex items-center gap-2">
                 <span className="text-lg">{t.type === 'comic' ? '📖' : t.type === 'novel' ? '📝' : '🎬'}</span>
                 <div>
@@ -164,9 +164,10 @@ export default function Profile() {
               <span className={`text-xs px-2 py-0.5 rounded-full ${
                 t.status === 'generating' ? 'bg-primary/20 text-primary-light animate-pulse' :
                 t.status === 'completed' ? 'bg-success/20 text-success' :
+                t.status === 'cancelled' ? 'bg-text-secondary/20 text-text-secondary' :
                 'bg-accent-pink/20 text-accent-pink'
               }`}>
-                {t.status === 'generating' ? '生成中...' : t.status === 'completed' ? '待发布' : '失败'}
+                {t.status === 'generating' ? '生成中...' : t.status === 'completed' ? '待发布' : t.status === 'cancelled' ? '已取消' : '失败'}
               </span>
             </div>
           ))}

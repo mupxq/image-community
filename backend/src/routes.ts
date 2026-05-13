@@ -257,6 +257,25 @@ router.post('/works', requireAuth, (req: AuthRequest, res: Response) => {
   res.json({ id: workId, message: '作品创建成功' })
 })
 
+// 删除作品（仅创作者可删）
+router.delete('/works/:id', requireAuth, (req: AuthRequest<{ id: string }>, res: Response) => {
+  const work = db.prepare('SELECT id, creator_id FROM works WHERE id = ?').get(req.params.id) as { id: number; creator_id: number } | undefined
+  if (!work) { res.status(404).json({ error: '作品不存在' }); return }
+  if (work.creator_id !== req.userId) { res.status(403).json({ error: '只能删除自己的作品' }); return }
+
+  db.pragma('foreign_keys = OFF')
+  db.prepare('DELETE FROM comments WHERE work_id = ?').run(work.id)
+  db.prepare('DELETE FROM bookmarks WHERE work_id = ?').run(work.id)
+  db.prepare('DELETE FROM work_pages WHERE work_id = ?').run(work.id)
+  db.prepare('DELETE FROM contributors WHERE work_id = ?').run(work.id)
+  // 清除子作品的 parent 引用
+  db.prepare('UPDATE works SET parent_work_id = NULL WHERE parent_work_id = ?').run(work.id)
+  db.prepare('DELETE FROM works WHERE id = ?').run(work.id)
+  db.pragma('foreign_keys = ON')
+
+  res.json({ message: '作品已删除' })
+})
+
 router.post('/works/:id/fork', requireAuth, (req: AuthRequest<{ id: string }>, res: Response) => {
   const parentWork = db.prepare('SELECT * FROM works WHERE id = ?').get(req.params.id) as WorkRow | undefined
   if (!parentWork) return res.status(404).json({ error: '原作品不存在' })

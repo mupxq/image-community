@@ -8,6 +8,9 @@ import { calculateCredits, estimateMaxCredits } from './pricingConfig'
 
 const router = Router()
 
+// 内存中维护任务的 AbortController，用于取消正在进行的 API 调用
+const taskAbortMap = new Map<number, AbortController>()
+
 // 列出可用 Provider（分 text/image 两类）
 router.get('/providers', (_req, res) => {
   res.json({
@@ -55,21 +58,43 @@ router.post('/generate', requireAuth, async (req: AuthRequest, res: Response) =>
 
   // 后台异步执行生成
   const userId = req.userId!
+  const abortController = new AbortController()
+  taskAbortMap.set(taskId, abortController)
+
   ;(async () => {
+    let usedPromptTokens = 0
+    let usedCompletionTokens = 0
+    let imageCount = 0
+    const typeLabel = type === 'novel' ? '小说' : type === 'comic' ? '漫画' : '短剧'
+
     try {
       const textResult = await textP.generateBreakdown({ synopsis, style, pageCount, type })
+
+      if (abortController.signal.aborted) {
+        // 文字已生成完但被取消，记录 token 消耗
+        usedPromptTokens = textResult.usage?.promptTokens || 0
+        usedCompletionTokens = textResult.usage?.completionTokens || 0
+        throw new DOMException('Aborted', 'AbortError')
+      }
+
       if (!textResult.success) {
         db.prepare('UPDATE generation_tasks SET status = ?, error = ?, completed_at = CURRENT_TIMESTAMP WHERE id = ?').run('failed', textResult.error || '文字生成失败', taskId)
         return
       }
 
+      usedPromptTokens = textResult.usage?.promptTokens || 0
+      usedCompletionTokens = textResult.usage?.completionTokens || 0
+
       const pages = []
       for (const page of textResult.pages) {
+        if (abortController.signal.aborted) throw new DOMException('Aborted', 'AbortError')
+
         if (type === 'novel') {
           pages.push({ pageNumber: page.pageNumber, description: page.description, dialogue: page.dialogue, image_url: undefined, ai_generated: true })
         } else {
           const imagePrompt = buildImagePrompt(page, style, type)
           const imageResult = await imageP!.generateImage({ prompt: imagePrompt, style, size: '2K' })
+          if (imageResult.success) imageCount++
           pages.push({
             pageNumber: page.pageNumber, description: page.description, dialogue: page.dialogue,
             image_url: imageResult.success ? imageResult.imageUrl : undefined,
@@ -79,23 +104,32 @@ router.post('/generate', requireAuth, async (req: AuthRequest, res: Response) =>
       }
 
       // 计算并扣除积分
-      const imageCount = pages.filter(p => p.image_url).length
-      const actualCredits = calculateCredits({
-        promptTokens: textResult.usage?.promptTokens || 0,
-        completionTokens: textResult.usage?.completionTokens || 0,
-        imageCount,
-      })
+      const finalImageCount = pages.filter(p => p.image_url).length
+      const actualCredits = calculateCredits({ promptTokens: usedPromptTokens, completionTokens: usedCompletionTokens, imageCount: finalImageCount })
 
       db.prepare('UPDATE users SET credits = credits - ? WHERE id = ?').run(actualCredits, userId)
-      db.prepare('INSERT INTO credit_logs (user_id, amount, type, description, task_id) VALUES (?, ?, ?, ?, ?)').run(userId, -actualCredits, 'ai_generate', `AI生成${type === 'novel' ? '小说' : type === 'comic' ? '漫画' : '短剧'}${pageCount}${type === 'novel' ? '章' : '页'}`, taskId)
+      db.prepare('INSERT INTO credit_logs (user_id, amount, type, description, task_id) VALUES (?, ?, ?, ?, ?)').run(userId, -actualCredits, 'ai_generate', `AI生成${typeLabel}${pageCount}${type === 'novel' ? '章' : '页'}`, taskId)
 
       console.log(`[任务${taskId}] 完成，扣费${actualCredits}积分`)
 
       const result = JSON.stringify({ title: textResult.title, description: textResult.description, hookDescription: textResult.hookDescription, coverPrompt: textResult.coverPrompt, pages })
       db.prepare('UPDATE generation_tasks SET status = ?, result = ?, credits_used = ?, completed_at = CURRENT_TIMESTAMP WHERE id = ?').run('completed', result, actualCredits, taskId)
     } catch (err: any) {
-      console.error(`[任务${taskId}] 失败:`, err.message)
-      db.prepare('UPDATE generation_tasks SET status = ?, error = ?, completed_at = CURRENT_TIMESTAMP WHERE id = ?').run('failed', err.message || 'AI 生成失败', taskId)
+      if (err.name === 'AbortError' || abortController.signal.aborted) {
+        // 取消 — 计算部分消耗
+        const partialCredits = calculateCredits({ promptTokens: usedPromptTokens, completionTokens: usedCompletionTokens, imageCount })
+        if (partialCredits > 0) {
+          db.prepare('UPDATE users SET credits = credits - ? WHERE id = ?').run(partialCredits, userId)
+          db.prepare('INSERT INTO credit_logs (user_id, amount, type, description, task_id) VALUES (?, ?, ?, ?, ?)').run(userId, -partialCredits, 'ai_generate', `AI生成${typeLabel}(已取消，部分消耗)`, taskId)
+          db.prepare('UPDATE generation_tasks SET credits_used = ? WHERE id = ?').run(partialCredits, taskId)
+        }
+        console.log(`[任务${taskId}] 已取消，部分扣费${partialCredits}积分`)
+      } else {
+        console.error(`[任务${taskId}] 失败:`, err.message)
+        db.prepare('UPDATE generation_tasks SET status = ?, error = ?, completed_at = CURRENT_TIMESTAMP WHERE id = ?').run('failed', err.message || 'AI 生成失败', taskId)
+      }
+    } finally {
+      taskAbortMap.delete(taskId)
     }
   })()
 })
@@ -139,6 +173,173 @@ router.post('/tasks/:id/publish', requireAuth, (req: AuthRequest, res: Response)
   }
 
   res.json({ id: workId, message: '作品已发布' })
+})
+
+// 取消生成中的任务
+router.post('/tasks/:id/cancel', requireAuth, (req: AuthRequest, res: Response) => {
+  const task = db.prepare('SELECT id, status FROM generation_tasks WHERE id = ? AND user_id = ?').get(req.params.id, req.userId) as any
+  if (!task) { res.status(404).json({ error: '任务不存在' }); return }
+  if (task.status !== 'generating') { res.status(400).json({ error: '只能取消生成中的任务' }); return }
+
+  // 更新状态
+  db.prepare('UPDATE generation_tasks SET status = ?, completed_at = CURRENT_TIMESTAMP WHERE id = ?').run('cancelled', task.id)
+
+  // 触发 abort
+  const controller = taskAbortMap.get(task.id)
+  if (controller) controller.abort()
+
+  res.json({ message: '任务已取消' })
+})
+
+// 删除任务
+router.delete('/tasks/:id', requireAuth, (req: AuthRequest, res: Response) => {
+  const task = db.prepare('SELECT id, status FROM generation_tasks WHERE id = ? AND user_id = ?').get(req.params.id, req.userId) as any
+  if (!task) { res.status(404).json({ error: '任务不存在' }); return }
+  if (task.status === 'generating') { res.status(400).json({ error: '生成中的任务请先取消' }); return }
+
+  db.prepare('DELETE FROM generation_tasks WHERE id = ?').run(task.id)
+  res.json({ message: '任务已删除' })
+})
+
+// 重新生成任务
+router.post('/tasks/:id/regenerate', requireAuth, async (req: AuthRequest, res: Response) => {
+  const task = db.prepare('SELECT * FROM generation_tasks WHERE id = ? AND user_id = ?').get(req.params.id, req.userId) as any
+  if (!task) { res.status(404).json({ error: '任务不存在' }); return }
+  if (task.status === 'generating') { res.status(400).json({ error: '任务正在生成中' }); return }
+
+  const inputParams = JSON.parse(task.input_params)
+  const { synopsis, style, type, pageCount, textProvider, imageProvider, textConfig, imageConfig } = inputParams
+  const isCustom = !!textConfig
+
+  if (!isCustom) {
+    // 平台模式 — 检查积分
+    const hasImages = type !== 'novel'
+    const estimatedCost = estimateMaxCredits(pageCount, hasImages)
+    const user = db.prepare('SELECT credits FROM users WHERE id = ?').get(req.userId) as { credits: number } | undefined
+    if (!user || user.credits < estimatedCost) {
+      res.status(403).json({ error: `积分可能不足，预估需要${estimatedCost}积分，当前${user?.credits || 0}积分` })
+      return
+    }
+  }
+
+  // 创建新任务
+  const newTaskResult = db.prepare('INSERT INTO generation_tasks (user_id, type, input_params) VALUES (?, ?, ?)').run(req.userId, task.type, task.input_params)
+  const newTaskId = Number(newTaskResult.lastInsertRowid)
+
+  res.json({ taskId: newTaskId, message: '重新生成任务已提交' })
+
+  // 启动异步生成
+  const userId = req.userId!
+  const abortController = new AbortController()
+  taskAbortMap.set(newTaskId, abortController)
+
+  if (isCustom) {
+    // 自定义模式 — 需要从 user_ai_configs 获取最新 API key
+    const config = db.prepare('SELECT * FROM user_ai_configs WHERE user_id = ?').get(userId) as any
+    const actualTextConfig = { baseUrl: textConfig.baseUrl, model: textConfig.model, apiKey: config?.text_api_key || '' }
+    const actualImageConfig = imageConfig ? { baseUrl: imageConfig.baseUrl, model: imageConfig.model, apiKey: config?.image_api_key || '' } : null
+
+    ;(async () => {
+      try {
+        const textP = new VolcengineTextProvider(actualTextConfig)
+        const textResult = await textP.generateBreakdown({ synopsis, style, pageCount, type })
+        if (abortController.signal.aborted) throw new DOMException('Aborted', 'AbortError')
+        if (!textResult.success) {
+          db.prepare('UPDATE generation_tasks SET status = ?, error = ?, completed_at = CURRENT_TIMESTAMP WHERE id = ?').run('failed', textResult.error || '文字生成失败', newTaskId)
+          return
+        }
+        const pages = []
+        if (type === 'novel') {
+          for (const page of textResult.pages) {
+            pages.push({ pageNumber: page.pageNumber, description: page.description, dialogue: page.dialogue, ai_generated: true })
+          }
+        } else if (actualImageConfig) {
+          for (const page of textResult.pages) {
+            if (abortController.signal.aborted) throw new DOMException('Aborted', 'AbortError')
+            const imgPrompt = buildImagePrompt(page, style, type)
+            let imageUrl: string | undefined
+            try {
+              const resp = await fetch(`${actualImageConfig.baseUrl}/images/generations`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${actualImageConfig.apiKey}` },
+                body: JSON.stringify({ model: actualImageConfig.model, prompt: imgPrompt, size: '1024x1024', n: 1 }),
+                signal: abortController.signal,
+              })
+              if (resp.ok) {
+                const data = await resp.json() as any
+                const remoteUrl = data?.data?.[0]?.url || data?.data?.[0]?.b64_json
+                if (remoteUrl) {
+                  const { downloadAndSaveImage } = await import('./ai/storage')
+                  imageUrl = await downloadAndSaveImage(remoteUrl)
+                }
+              }
+            } catch (e: any) { if (e.name === 'AbortError') throw e }
+            pages.push({ pageNumber: page.pageNumber, description: page.description, dialogue: page.dialogue, image_url: imageUrl, ai_generated: true })
+          }
+        }
+        const result = JSON.stringify({ title: textResult.title, description: textResult.description, hookDescription: textResult.hookDescription, coverPrompt: textResult.coverPrompt, pages })
+        db.prepare('UPDATE generation_tasks SET status = ?, result = ?, credits_used = 0, completed_at = CURRENT_TIMESTAMP WHERE id = ?').run('completed', result, newTaskId)
+      } catch (err: any) {
+        if (err.name === 'AbortError' || abortController.signal.aborted) {
+          console.log(`[任务${newTaskId}] 自定义API任务已取消`)
+        } else {
+          db.prepare('UPDATE generation_tasks SET status = ?, error = ?, completed_at = CURRENT_TIMESTAMP WHERE id = ?').run('failed', err.message || 'AI 生成失败', newTaskId)
+        }
+      } finally { taskAbortMap.delete(newTaskId) }
+    })()
+  } else {
+    // 平台模式
+    const textP = registry.getTextProvider(textProvider)
+    const imageP = registry.getImageProvider(imageProvider)
+
+    ;(async () => {
+      let usedPromptTokens = 0, usedCompletionTokens = 0, imgCount = 0
+      const typeLabel = type === 'novel' ? '小说' : type === 'comic' ? '漫画' : '短剧'
+      try {
+        const textResult = await textP!.generateBreakdown({ synopsis, style, pageCount, type })
+        if (abortController.signal.aborted) {
+          usedPromptTokens = textResult.usage?.promptTokens || 0
+          usedCompletionTokens = textResult.usage?.completionTokens || 0
+          throw new DOMException('Aborted', 'AbortError')
+        }
+        if (!textResult.success) {
+          db.prepare('UPDATE generation_tasks SET status = ?, error = ?, completed_at = CURRENT_TIMESTAMP WHERE id = ?').run('failed', textResult.error || '文字生成失败', newTaskId)
+          return
+        }
+        usedPromptTokens = textResult.usage?.promptTokens || 0
+        usedCompletionTokens = textResult.usage?.completionTokens || 0
+        const pages = []
+        for (const page of textResult.pages) {
+          if (abortController.signal.aborted) throw new DOMException('Aborted', 'AbortError')
+          if (type === 'novel') {
+            pages.push({ pageNumber: page.pageNumber, description: page.description, dialogue: page.dialogue, image_url: undefined, ai_generated: true })
+          } else {
+            const imgPrompt = buildImagePrompt(page, style, type)
+            const imageResult = await imageP!.generateImage({ prompt: imgPrompt, style, size: '2K' })
+            if (imageResult.success) imgCount++
+            pages.push({ pageNumber: page.pageNumber, description: page.description, dialogue: page.dialogue, image_url: imageResult.success ? imageResult.imageUrl : undefined, ai_generated: true })
+          }
+        }
+        const finalImageCount = pages.filter(p => p.image_url).length
+        const actualCredits = calculateCredits({ promptTokens: usedPromptTokens, completionTokens: usedCompletionTokens, imageCount: finalImageCount })
+        db.prepare('UPDATE users SET credits = credits - ? WHERE id = ?').run(actualCredits, userId)
+        db.prepare('INSERT INTO credit_logs (user_id, amount, type, description, task_id) VALUES (?, ?, ?, ?, ?)').run(userId, -actualCredits, 'ai_generate', `AI生成${typeLabel}${pageCount}${type === 'novel' ? '章' : '页'}`, newTaskId)
+        const result = JSON.stringify({ title: textResult.title, description: textResult.description, hookDescription: textResult.hookDescription, coverPrompt: textResult.coverPrompt, pages })
+        db.prepare('UPDATE generation_tasks SET status = ?, result = ?, credits_used = ?, completed_at = CURRENT_TIMESTAMP WHERE id = ?').run('completed', result, actualCredits, newTaskId)
+      } catch (err: any) {
+        if (err.name === 'AbortError' || abortController.signal.aborted) {
+          const partialCredits = calculateCredits({ promptTokens: usedPromptTokens, completionTokens: usedCompletionTokens, imageCount: imgCount })
+          if (partialCredits > 0) {
+            db.prepare('UPDATE users SET credits = credits - ? WHERE id = ?').run(partialCredits, userId)
+            db.prepare('INSERT INTO credit_logs (user_id, amount, type, description, task_id) VALUES (?, ?, ?, ?, ?)').run(userId, -partialCredits, 'ai_generate', `AI生成${typeLabel}(已取消，部分消耗)`, newTaskId)
+            db.prepare('UPDATE generation_tasks SET credits_used = ? WHERE id = ?').run(partialCredits, newTaskId)
+          }
+        } else {
+          db.prepare('UPDATE generation_tasks SET status = ?, error = ?, completed_at = CURRENT_TIMESTAMP WHERE id = ?').run('failed', err.message || 'AI 生成失败', newTaskId)
+        }
+      } finally { taskAbortMap.delete(newTaskId) }
+    })()
+  }
 })
 
 // 生成封面图
@@ -278,11 +479,17 @@ router.post('/generate-custom', requireAuth, async (req: AuthRequest, res: Respo
 
   // 后台异步执行
   const userId = req.userId!
+  const abortController = new AbortController()
+  taskAbortMap.set(taskId, abortController)
+
   ;(async () => {
     try {
       const textP = new VolcengineTextProvider({ apiKey: textConfig.apiKey, baseUrl: textConfig.baseUrl, model: textConfig.model })
 
       const textResult = await textP.generateBreakdown({ synopsis, style, pageCount, type })
+
+      if (abortController.signal.aborted) throw new DOMException('Aborted', 'AbortError')
+
       if (!textResult.success) {
         db.prepare('UPDATE generation_tasks SET status = ?, error = ?, completed_at = CURRENT_TIMESTAMP WHERE id = ?').run('failed', textResult.error || '文字生成失败', taskId)
         return
@@ -295,6 +502,8 @@ router.post('/generate-custom', requireAuth, async (req: AuthRequest, res: Respo
         }
       } else {
         for (const page of textResult.pages) {
+          if (abortController.signal.aborted) throw new DOMException('Aborted', 'AbortError')
+
           const imagePrompt = buildImagePrompt(page, style, type)
           let imageUrl: string | undefined
 
@@ -304,6 +513,7 @@ router.post('/generate-custom', requireAuth, async (req: AuthRequest, res: Respo
               method: 'POST',
               headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${imageConfig.apiKey}` },
               body: JSON.stringify({ model: imageConfig.model, prompt: imagePrompt, size: '1024x1024', n: 1 }),
+              signal: abortController.signal,
             })
             if (resp.ok) {
               const data = await resp.json() as any
@@ -313,7 +523,9 @@ router.post('/generate-custom', requireAuth, async (req: AuthRequest, res: Respo
                 imageUrl = await downloadAndSaveImage(remoteUrl)
               }
             }
-          } catch {}
+          } catch (e: any) {
+            if (e.name === 'AbortError') throw e
+          }
 
           pages.push({ pageNumber: page.pageNumber, description: page.description, dialogue: page.dialogue, image_url: imageUrl, ai_generated: true })
         }
@@ -323,8 +535,15 @@ router.post('/generate-custom', requireAuth, async (req: AuthRequest, res: Respo
       const result = JSON.stringify({ title: textResult.title, description: textResult.description, hookDescription: textResult.hookDescription, coverPrompt: textResult.coverPrompt, pages })
       db.prepare('UPDATE generation_tasks SET status = ?, result = ?, credits_used = 0, completed_at = CURRENT_TIMESTAMP WHERE id = ?').run('completed', result, taskId)
     } catch (err: any) {
-      console.error(`[任务${taskId}] 自定义API失败:`, err.message)
-      db.prepare('UPDATE generation_tasks SET status = ?, error = ?, completed_at = CURRENT_TIMESTAMP WHERE id = ?').run('failed', err.message || 'AI 生成失败，请检查 API 配置', taskId)
+      if (err.name === 'AbortError' || abortController.signal.aborted) {
+        console.log(`[任务${taskId}] 自定义API任务已取消`)
+        // 自定义 API 不消耗积分，无需扣费
+      } else {
+        console.error(`[任务${taskId}] 自定义API失败:`, err.message)
+        db.prepare('UPDATE generation_tasks SET status = ?, error = ?, completed_at = CURRENT_TIMESTAMP WHERE id = ?').run('failed', err.message || 'AI 生成失败，请检查 API 配置', taskId)
+      }
+    } finally {
+      taskAbortMap.delete(taskId)
     }
   })()
 })

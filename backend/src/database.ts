@@ -7,6 +7,18 @@ const db: InstanceType<typeof Database> = new Database(path.join(__dirname, '..'
 // 启用WAL模式提升性能
 db.pragma('journal_mode = WAL')
 db.pragma('foreign_keys = ON')
+db.pragma('wal_autocheckpoint = 1000')
+
+// 关机时调用：强制 checkpoint 并关闭连接
+export function checkpointAndClose() {
+  try {
+    db.pragma('wal_checkpoint(TRUNCATE)')
+    db.close()
+    console.log('[DB] WAL checkpoint 完成，数据库已关闭')
+  } catch (err: any) {
+    console.error('[DB] checkpoint 失败:', err.message)
+  }
+}
 
 // 创建表结构
 db.exec(`
@@ -154,7 +166,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS generation_tasks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
-    status TEXT CHECK(status IN ('generating','completed','failed')) NOT NULL DEFAULT 'generating',
+    status TEXT CHECK(status IN ('generating','completed','failed','cancelled')) NOT NULL DEFAULT 'generating',
     type TEXT NOT NULL DEFAULT 'comic',
     input_params TEXT NOT NULL,
     result TEXT,
@@ -206,6 +218,29 @@ if (!columnNames.includes('username')) {
   for (const u of oldUsers) {
     db.prepare("UPDATE users SET username = ?, password_hash = ? WHERE id = ?").run(`user${u.id}`, hash, u.id)
   }
+}
+
+// 迁移：generation_tasks 表支持 'cancelled' 状态（重建表以更新 CHECK 约束）
+const taskCheckInfo = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='generation_tasks'").get() as { sql: string } | undefined
+if (taskCheckInfo && !taskCheckInfo.sql.includes('cancelled')) {
+  db.exec(`
+    CREATE TABLE generation_tasks_new (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      status TEXT CHECK(status IN ('generating','completed','failed','cancelled')) NOT NULL DEFAULT 'generating',
+      type TEXT NOT NULL DEFAULT 'comic',
+      input_params TEXT NOT NULL,
+      result TEXT,
+      error TEXT,
+      credits_used INTEGER DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      completed_at DATETIME,
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    );
+    INSERT INTO generation_tasks_new SELECT * FROM generation_tasks;
+    DROP TABLE generation_tasks;
+    ALTER TABLE generation_tasks_new RENAME TO generation_tasks;
+  `)
 }
 
 // 迁移：comments 表加 parent_id 字段（支持回复）
