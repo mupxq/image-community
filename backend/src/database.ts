@@ -299,4 +299,10 @@ db.exec(`
   );
 `)
 
+// 确保系统用户存在（id=0，用于系统通知消息）
+const sysUser = db.prepare('SELECT id FROM users WHERE id = 0').get()
+if (!sysUser) {
+  db.prepare("INSERT INTO users (id, username, password_hash, nickname, avatar, bio) VALUES (0, 'system', '', '系统通知', '🤖', '系统用户')").run()
+}
+
 export default db

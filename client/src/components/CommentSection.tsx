@@ -38,20 +38,24 @@ export default function CommentSection({ workId, comments: initialComments, high
     }
   }, [user])
 
-  const detectMention = (value: string, cursorPos: number) => {
-    const beforeCursor = value.slice(0, cursorPos)
-    const atMatch = beforeCursor.match(/@([^\s@]*)$/)
-    if (atMatch) {
-      setMentionSearch(atMatch[1] || '')
-      const rect = inputRef.current?.getBoundingClientRect()
-      if (rect) {
-        setMentionPos({ top: rect.top - 200, left: rect.left })
+  const detectMention = (value: string) => {
+    // 查找最后一个 @ 后面的文字（支持中英文输入）
+    const lastAtIndex = value.lastIndexOf('@')
+    if (lastAtIndex >= 0) {
+      const afterAt = value.slice(lastAtIndex + 1)
+      // 如果 @ 后面没有空格且不在字符串最开头（或者 @ 前面是空格/行首），就显示列表
+      if (!afterAt.includes(' ') && !afterAt.includes('\n')) {
+        setMentionSearch(afterAt)
+        const rect = inputRef.current?.getBoundingClientRect()
+        if (rect) {
+          setMentionPos({ top: rect.top - 210, left: rect.left })
+        }
+        return
       }
-    } else {
-      setMentionSearch('')
-      setMentionPos(null)
-      setMentionIndex(-1)
     }
+    setMentionSearch('')
+    setMentionPos(null)
+    setMentionIndex(-1)
   }
 
   const filteredMutuals = mentionSearch
@@ -61,21 +65,14 @@ export default function CommentSection({ workId, comments: initialComments, high
     : mutuals
 
   const insertMention = (mu: MutualUser) => {
-    const input = inputRef.current
-    if (!input) return
-    const cursorPos = input.selectionStart || 0
-    const beforeCursor = content.slice(0, cursorPos)
-    const afterCursor = content.slice(cursorPos)
-    const atIndex = beforeCursor.lastIndexOf('@')
-    const newBefore = beforeCursor.slice(0, atIndex) + `@${mu.username} `
-    const newContent = newBefore + afterCursor
+    const lastAtIndex = content.lastIndexOf('@')
+    const newContent = content.slice(0, lastAtIndex) + `@${mu.username} `
     setContent(newContent)
     setMentionSearch('')
     setMentionPos(null)
     setMentionIndex(-1)
     setTimeout(() => {
-      input.setSelectionRange(newBefore.length, newBefore.length)
-      input.focus()
+      inputRef.current?.focus()
     }, 0)
   }
 
@@ -132,7 +129,7 @@ export default function CommentSection({ workId, comments: initialComments, high
   const handleInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value
     setContent(val)
-    detectMention(val, e.target.selectionStart || 0)
+    detectMention(val)
   }
 
   return (
@@ -178,7 +175,7 @@ export default function CommentSection({ workId, comments: initialComments, high
           )}
           {/* @mention dropdown */}
           {mentionPos && filteredMutuals.length > 0 && (
-            <div className="absolute z-50 bg-bg-card border border-border rounded-xl shadow-lg w-56 max-h-48 overflow-y-auto" style={{ bottom: '100%', left: mentionPos.left, marginBottom: 8 }}>
+            <div className="fixed z-50 bg-bg-card border border-border rounded-xl shadow-lg w-56 max-h-48 overflow-y-auto" style={{ top: mentionPos.top, left: mentionPos.left }}>
               {filteredMutuals.map((mu, i) => (
                 <button
                   key={mu.id}
