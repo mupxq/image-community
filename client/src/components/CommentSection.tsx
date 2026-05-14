@@ -22,6 +22,7 @@ export default function CommentSection({ workId, comments: initialComments, high
   const [mentionSearch, setMentionSearch] = useState('')
   const [mentionIndex, setMentionIndex] = useState(-1)
   const [mentionPos, setMentionPos] = useState<{ top: number; left: number } | null>(null)
+  const [submitting, setSubmitting] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -87,13 +88,17 @@ export default function CommentSection({ workId, comments: initialComments, high
       } else if (e.key === 'Enter' && mentionIndex >= 0) {
         e.preventDefault()
         insertMention(filteredMutuals[mentionIndex]!)
+        return
       } else if (e.key === 'Escape') {
+        e.preventDefault()
         setMentionPos(null)
         setMentionIndex(-1)
+        return
       }
-      return
+      // 下拉打开时，非特殊键不阻止（允许继续输入和 Enter 提交）
     }
-    if (e.key === 'Enter' && !mentionPos) {
+    if (e.key === 'Enter') {
+      e.preventDefault()
       submit()
     }
   }
@@ -116,14 +121,26 @@ export default function CommentSection({ workId, comments: initialComments, high
   }
 
   const submit = async () => {
-    if (!content.trim()) return
-    await commentsApi.create(workId, { content: content.trim(), parent_id: replyTo?.id })
-    const updated = await commentsApi.list(workId)
-    setComments(updated)
+    if (!content.trim() || submitting) return
+    const text = content.trim()
+    // 先清空输入框和状态，防止重复提交
     setContent('')
     setReplyTo(null)
     setMentionSearch('')
     setMentionPos(null)
+    setMentionIndex(-1)
+    setSubmitting(true)
+    try {
+      await commentsApi.create(workId, { content: text, parent_id: replyTo?.id })
+      const updated = await commentsApi.list(workId)
+      setComments(updated)
+    } catch (err: any) {
+      // 失败时恢复输入内容
+      setContent(text)
+      if (replyTo) setReplyTo(replyTo)
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   const handleInput = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -200,8 +217,8 @@ export default function CommentSection({ workId, comments: initialComments, high
               onChange={handleInput}
               onKeyDown={handleKeyDown}
             />
-            <button onClick={submit} className="px-4 py-2 bg-primary rounded-lg text-sm text-white hover:bg-primary-light transition-colors">
-              发送
+            <button onClick={submit} disabled={submitting} className="px-4 py-2 bg-primary rounded-lg text-sm text-white hover:bg-primary-light transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+              {submitting ? '发送中...' : '发送'}
             </button>
           </div>
         </div>
