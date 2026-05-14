@@ -1,6 +1,0 @@
-{
-  "dependencies": {
-    "html2canvas": "^1.4.1",
-    "qrcode.react": "^4.2.0"
-  }
-}
