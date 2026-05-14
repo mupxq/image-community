@@ -5,10 +5,14 @@ function getToken(): string | null {
 }
 
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  const headers: Record<string, string> = {}
   const token = getToken()
   if (token) {
     headers['Authorization'] = `Bearer ${token}`
+  }
+  // 只在有 body 时设置 Content-Type，避免 body-less POST 触发不必要的 CORS preflight
+  if (options?.body) {
+    headers['Content-Type'] = 'application/json'
   }
   const res = await fetch(`${API}${url}`, {
     ...options,

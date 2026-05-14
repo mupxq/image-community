@@ -124,20 +124,27 @@ export default function WorkDetail() {
   }, [id, pages])
 
   const handleLikeWork = useCallback(async () => {
-    if (!work) return
     if (!user) { navigate('/login'); return }
-    const res = await worksApi.likeWork(work.id)
-    setWork(prev => prev ? { ...prev, liked: res.liked, like_count: Math.max(0, (prev.like_count || 0) + (res.liked ? 1 : -1)) } : prev)
-  }, [work, user, navigate])
+    try {
+      const res = await worksApi.likeWork(work!.id)
+      setWork(prev => prev ? { ...prev, liked: res.liked, like_count: Math.max(0, (prev.like_count || 0) + (res.liked ? 1 : -1)) } : prev)
+    } catch (err: any) {
+      // ignore
+    }
+  }, [work?.id, user, navigate])
 
   const handleLikePage = useCallback(async (pageId: number) => {
     if (!user) { navigate('/login'); return }
-    const res = await worksApi.likePage(pageId)
-    setPageLikes(prev => prev.map(p =>
-      p.page_id === pageId
-        ? { ...p, liked: res.liked, like_count: Math.max(0, p.like_count + (res.liked ? 1 : -1)) }
-        : p
-    ))
+    try {
+      const res = await worksApi.likePage(pageId)
+      setPageLikes(prev => prev.map(p =>
+        p.page_id === pageId
+          ? { ...p, liked: res.liked, like_count: Math.max(0, p.like_count + (res.liked ? 1 : -1)) }
+          : p
+      ))
+    } catch (err: any) {
+      // ignore
+    }
   }, [user, navigate])
 
   const toggleBranches = useCallback(async (pageNumber: number) => {
