@@ -26,7 +26,7 @@ export default function Sidebar() {
     <aside className="hidden md:flex flex-col fixed left-0 top-0 h-screen w-[200px] bg-bg-card border-r border-border z-50">
       <div className="px-5 py-6">
         <h1 className="text-lg font-bold bg-gradient-to-r from-accent to-primary-light bg-clip-text text-transparent">
-          影像社区
+          CoCoNut
         </h1>
       </div>
 

@@ -49,7 +49,7 @@ app.get(/.*/,  (_req, res) => {
 seedData()
 
 const server = app.listen(PORT, () => {
-  console.log(`影像社区服务已启动: http://localhost:${PORT}`)
+  console.log(`CoCoNut 服务已启动: http://localhost:${PORT}`)
   startScheduledBackup()
 })
 

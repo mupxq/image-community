@@ -149,6 +149,32 @@ export interface TreeNode {
   children: TreeNode[]
 }
 
+export interface ChapterTreeWork {
+  id: number
+  title: string
+  subtitle: string
+  type: string
+  parent_work_id: number | null
+  root_work_id: number | null
+  fork_from_page: number | null
+  creator_id: number
+  creator_name: string
+}
+
+export interface ChapterTreePage {
+  id: number
+  work_id: number
+  page_number: number
+  description: string
+  dialogue: string
+}
+
+export interface ChapterTreeData {
+  works: ChapterTreeWork[]
+  pages: ChapterTreePage[]
+  rootWorkId: number
+}
+
 export interface PageInput {
   description: string
   dialogue: string

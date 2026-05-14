@@ -69,7 +69,7 @@ export const worksApi = {
   },
   getById: (id: number) => request<import('../types').WorkDetail>(`/works/${id}`),
   getPages: (id: number) => request<import('../types').WorkPage[]>(`/works/${id}/pages`),
-  getTree: (id: number) => request<import('../types').TreeNode>(`/works/${id}/tree`),
+  getTree: (id: number) => request<import('../types').ChapterTreeData>(`/works/${id}/tree`),
   create: (data: { title: string; description: string; type: string; pages?: import('../types').PageInput[]; cover_image?: string; allow_fork?: number }) =>
     request<{ id: number; message: string }>('/works', { method: 'POST', body: JSON.stringify(data) }),
   fork: (parentId: number, data: { subtitle: string; description?: string; pages?: import('../types').PageInput[]; cover_image?: string; fork_from_page?: number }) =>

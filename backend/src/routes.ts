@@ -189,20 +189,6 @@ router.get('/works/:id/pages', (req: Request<{ id: string }>, res: Response) => 
   res.json(pages)
 })
 
-interface TreeNodeRow extends Record<string, unknown> {
-  id: number
-  title: string
-  cover_image: string
-  type: string
-  parent_work_id: number | null
-  root_work_id: number | null
-  creator_id: number
-  created_at: string
-  creator_name: string
-  creator_avatar: string
-  fork_count: number
-}
-
 router.get('/works/:id/tree', (req: Request<{ id: string }>, res: Response) => {
   const work = db.prepare('SELECT * FROM works WHERE id = ?').get(req.params.id) as WorkRow | undefined
   if (!work) return res.status(404).json({ error: '作品不存在' })
@@ -210,27 +196,30 @@ router.get('/works/:id/tree', (req: Request<{ id: string }>, res: Response) => {
   const rootId = work.root_work_id || work.id
 
   const allWorks = db.prepare(`
-    SELECT w.id, w.title, w.cover_image, w.type, w.parent_work_id, w.root_work_id,
-      w.creator_id, w.created_at,
-      u.nickname as creator_name, u.avatar as creator_avatar,
-      (SELECT COUNT(*) FROM works w2 WHERE w2.parent_work_id = w.id) as fork_count
+    SELECT w.id, w.title, w.subtitle, w.type, w.parent_work_id, w.root_work_id,
+      w.fork_from_page, w.creator_id,
+      u.nickname as creator_name
     FROM works w
     JOIN users u ON w.creator_id = u.id
     WHERE (w.root_work_id = ? OR w.id = ?) AND w.status = 'published'
     ORDER BY w.created_at ASC
-  `).all(rootId, rootId) as TreeNodeRow[]
+  `).all(rootId, rootId) as any[]
 
-  function buildTree(works: TreeNodeRow[], parentId: number | null): (TreeNodeRow & { children: ReturnType<typeof buildTree> })[] {
-    return works
-      .filter(w => (parentId === null ? w.id === rootId : w.parent_work_id === parentId))
-      .map(w => ({
-        ...w,
-        children: buildTree(works, w.id)
-      }))
-  }
+  const workIds = allWorks.map(w => w.id)
+  const allPages = workIds.length > 0
+    ? db.prepare(`
+        SELECT id, work_id, page_number, description, dialogue
+        FROM work_pages
+        WHERE work_id IN (${workIds.map(() => '?').join(',')})
+        ORDER BY work_id, page_number ASC
+      `).all(...workIds) as any[]
+    : []
 
-  const tree = buildTree(allWorks, null)
-  res.json(tree.length > 0 ? tree[0] : null)
+  res.json({
+    works: allWorks,
+    pages: allPages,
+    rootWorkId: rootId,
+  })
 })
 
 interface PageInput {

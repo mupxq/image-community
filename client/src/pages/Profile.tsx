@@ -68,7 +68,7 @@ export default function Profile() {
         <div className="px-4 pt-5">
           <div className="bg-bg-card rounded-2xl p-8 text-center">
             <div className="text-5xl mb-4">👤</div>
-            <h2 className="text-lg font-bold">登录影像社区</h2>
+            <h2 className="text-lg font-bold">登录 CoCoNut</h2>
             <p className="text-sm text-text-secondary mt-2">登录后可以创作、收藏、互动交流</p>
             <button
               onClick={() => navigate('/login')}
