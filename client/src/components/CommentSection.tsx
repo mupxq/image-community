@@ -121,23 +121,43 @@ export default function CommentSection({ workId, comments: initialComments, high
   }
 
   const submit = async () => {
-    if (!content.trim() || submitting) return
+    if (!content.trim() || submitting || !user) return
     const text = content.trim()
-    // 先清空输入框和状态，防止重复提交
+    const parentId = replyTo?.id
+    const replyName = replyTo?.nickname || undefined
+
+    // 乐观更新：立即清空输入 + 插入临时评论
     setContent('')
     setReplyTo(null)
     setMentionSearch('')
     setMentionPos(null)
     setMentionIndex(-1)
     setSubmitting(true)
+
+    const optimisticId = -Date.now()
+    const optimisticComment: Comment = {
+      id: optimisticId,
+      work_id: workId,
+      user_id: user.id,
+      content: text,
+      created_at: new Date().toISOString(),
+      nickname: user.nickname,
+      avatar: user.avatar,
+      parent_id: parentId || null,
+      reply_to_name: replyName || null,
+    }
+    setComments(prev => [...prev, optimisticComment])
+
     try {
-      await commentsApi.create(workId, { content: text, parent_id: replyTo?.id })
+      await commentsApi.create(workId, { content: text, parent_id: parentId })
+      // 用服务端数据替换乐观评论
       const updated = await commentsApi.list(workId)
       setComments(updated)
     } catch (err: any) {
-      // 失败时恢复输入内容
+      // 失败：移除乐观评论，恢复输入
+      setComments(prev => prev.filter(c => c.id !== optimisticId))
       setContent(text)
-      if (replyTo) setReplyTo(replyTo)
+      if (replyName) setReplyTo({ id: parentId!, nickname: replyName })
     } finally {
       setSubmitting(false)
     }
