@@ -76,6 +76,24 @@ export default function Chat() {
                   </div>
                 )
               }
+              if (parsed?.type === 'mention_notify') {
+                return (
+                  <div key={msg.id} onClick={() => navigate(`/work/${parsed.workId}?comment=${parsed.commentId}`)} className="text-center cursor-pointer">
+                    <div className="inline-block bg-bg-secondary rounded-lg px-3 py-2 text-xs text-text-secondary hover:bg-primary/10 transition-colors">
+                      <span className="text-primary font-medium">{parsed.mentionerName}</span> 在「{parsed.workTitle}」的评论中 @了你：{parsed.text}
+                    </div>
+                  </div>
+                )
+              }
+              if (parsed?.type === 'like_notify') {
+                return (
+                  <div key={msg.id} onClick={() => navigate(`/work/${parsed.workId}`)} className="text-center cursor-pointer">
+                    <div className="inline-block bg-bg-secondary rounded-lg px-3 py-2 text-xs text-text-secondary hover:bg-primary/10 transition-colors">
+                      <span className="text-primary font-medium">{parsed.likerName}</span> 点赞了你的作品「{parsed.workTitle}」
+                    </div>
+                  </div>
+                )
+              }
               return (
                 <div key={msg.id} className="text-center">
                   <span className="text-[10px] text-text-secondary bg-bg-secondary px-2 py-1 rounded">{msg.content}</span>

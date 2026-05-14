@@ -169,6 +169,8 @@ export const followsApi = {
     request<import('../types').User[]>(`/users/${userId}/followers`),
   following: (userId: number) =>
     request<import('../types').User[]>(`/users/${userId}/following`),
+  mutualFollowers: () =>
+    request<{ id: number; nickname: string; avatar: string; username: string }[]>('/users/me/mutual-followers'),
 }
 
 export const subscriptionsApi = {

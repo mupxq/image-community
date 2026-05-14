@@ -1,9 +1,16 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { Comment } from '../types'
-import { commentsApi } from '../api'
+import { commentsApi, followsApi } from '../api'
 import { useUser } from '../contexts/UserContext'
 import UserAvatar from './UserAvatar'
+
+interface MutualUser {
+  id: number
+  nickname: string
+  avatar: string
+  username: string
+}
 
 export default function CommentSection({ workId, comments: initialComments, highlightId }: { workId: number; comments: Comment[]; highlightId?: number }) {
   const { user } = useUser()
@@ -11,6 +18,11 @@ export default function CommentSection({ workId, comments: initialComments, high
   const [comments, setComments] = useState(initialComments)
   const [content, setContent] = useState('')
   const [replyTo, setReplyTo] = useState<{ id: number; nickname: string } | null>(null)
+  const [mutuals, setMutuals] = useState<MutualUser[]>([])
+  const [mentionSearch, setMentionSearch] = useState('')
+  const [mentionIndex, setMentionIndex] = useState(-1)
+  const [mentionPos, setMentionPos] = useState<{ top: number; left: number } | null>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (highlightId) {
@@ -20,6 +32,92 @@ export default function CommentSection({ workId, comments: initialComments, high
     }
   }, [highlightId])
 
+  useEffect(() => {
+    if (user) {
+      followsApi.mutualFollowers().then(setMutuals).catch(() => {})
+    }
+  }, [user])
+
+  const detectMention = (value: string, cursorPos: number) => {
+    const beforeCursor = value.slice(0, cursorPos)
+    const atMatch = beforeCursor.match(/@([^\s@]*)$/)
+    if (atMatch) {
+      setMentionSearch(atMatch[1] || '')
+      const rect = inputRef.current?.getBoundingClientRect()
+      if (rect) {
+        setMentionPos({ top: rect.top - 200, left: rect.left })
+      }
+    } else {
+      setMentionSearch('')
+      setMentionPos(null)
+      setMentionIndex(-1)
+    }
+  }
+
+  const filteredMutuals = mentionSearch
+    ? mutuals.filter(m =>
+        m.nickname.includes(mentionSearch) || m.username.includes(mentionSearch)
+      )
+    : mutuals
+
+  const insertMention = (mu: MutualUser) => {
+    const input = inputRef.current
+    if (!input) return
+    const cursorPos = input.selectionStart || 0
+    const beforeCursor = content.slice(0, cursorPos)
+    const afterCursor = content.slice(cursorPos)
+    const atIndex = beforeCursor.lastIndexOf('@')
+    const newBefore = beforeCursor.slice(0, atIndex) + `@${mu.username} `
+    const newContent = newBefore + afterCursor
+    setContent(newContent)
+    setMentionSearch('')
+    setMentionPos(null)
+    setMentionIndex(-1)
+    setTimeout(() => {
+      input.setSelectionRange(newBefore.length, newBefore.length)
+      input.focus()
+    }, 0)
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (mentionPos && filteredMutuals.length > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        setMentionIndex(prev => Math.min(prev + 1, filteredMutuals.length - 1))
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        setMentionIndex(prev => Math.max(prev - 1, -1))
+      } else if (e.key === 'Enter' && mentionIndex >= 0) {
+        e.preventDefault()
+        insertMention(filteredMutuals[mentionIndex]!)
+      } else if (e.key === 'Escape') {
+        setMentionPos(null)
+        setMentionIndex(-1)
+      }
+      return
+    }
+    if (e.key === 'Enter' && !mentionPos) {
+      submit()
+    }
+  }
+
+  const renderContent = (text: string) => {
+    return text.split(/(@\S+)/g).map((part, i) => {
+      if (part.startsWith('@')) {
+        const username = part.slice(1)
+        return (
+          <span key={i} className="text-primary font-medium cursor-pointer hover:underline" onClick={() => {
+            const mu = mutuals.find(m => m.username === username)
+            if (mu) navigate(`/user/${mu.id}`)
+          }}>
+            {part}
+          </span>
+        )
+      }
+      return <span key={i}>{part}</span>
+    })
+  }
+
   const submit = async () => {
     if (!content.trim()) return
     await commentsApi.create(workId, { content: content.trim(), parent_id: replyTo?.id })
@@ -27,6 +125,14 @@ export default function CommentSection({ workId, comments: initialComments, high
     setComments(updated)
     setContent('')
     setReplyTo(null)
+    setMentionSearch('')
+    setMentionPos(null)
+  }
+
+  const handleInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value
+    setContent(val)
+    detectMention(val, e.target.selectionStart || 0)
   }
 
   return (
@@ -50,7 +156,7 @@ export default function CommentSection({ workId, comments: initialComments, high
             {c.reply_to_name && (
               <span className="text-[10px] text-primary">回复 @{c.reply_to_name}</span>
             )}
-            <div className="text-xs text-text-secondary mt-0.5">{c.content}</div>
+            <div className="text-xs text-text-secondary mt-0.5">{renderContent(c.content)}</div>
             {user && (
               <button
                 onClick={() => setReplyTo({ id: c.id, nickname: c.nickname })}
@@ -63,20 +169,39 @@ export default function CommentSection({ workId, comments: initialComments, high
         </div>
       ))}
       {user ? (
-        <div className="pt-2">
+        <div className="pt-2 relative">
           {replyTo && (
             <div className="flex items-center gap-2 mb-1">
               <span className="text-[10px] text-primary">回复 @{replyTo.nickname}</span>
               <button onClick={() => setReplyTo(null)} className="text-[10px] text-text-secondary hover:text-accent-pink">取消</button>
             </div>
           )}
+          {/* @mention dropdown */}
+          {mentionPos && filteredMutuals.length > 0 && (
+            <div className="absolute z-50 bg-bg-card border border-border rounded-xl shadow-lg w-56 max-h-48 overflow-y-auto" style={{ bottom: '100%', left: mentionPos.left, marginBottom: 8 }}>
+              {filteredMutuals.map((mu, i) => (
+                <button
+                  key={mu.id}
+                  onClick={() => insertMention(mu)}
+                  className={`flex items-center gap-2 w-full px-3 py-2 hover:bg-bg-secondary transition-colors text-left ${i === mentionIndex ? 'bg-bg-secondary' : ''}`}
+                >
+                  <UserAvatar avatar={mu.avatar} nickname={mu.nickname} size="sm" />
+                  <div>
+                    <div className="text-xs font-medium">{mu.nickname}</div>
+                    <div className="text-[10px] text-text-secondary">@{mu.username}</div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
           <div className="flex gap-2">
             <input
+              ref={inputRef}
               className="flex-1 bg-bg-card border border-border rounded-lg px-3 py-2 text-sm text-text placeholder:text-text-secondary focus:outline-none focus:border-primary"
-              placeholder={replyTo ? `回复 @${replyTo.nickname}...` : '写评论...'}
+              placeholder={replyTo ? `回复 @${replyTo.nickname}...` : '写评论... 输入 @ 提及好友'}
               value={content}
-              onChange={(e) => setContent(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && submit()}
+              onChange={handleInput}
+              onKeyDown={handleKeyDown}
             />
             <button onClick={submit} className="px-4 py-2 bg-primary rounded-lg text-sm text-white hover:bg-primary-light transition-colors">
               发送

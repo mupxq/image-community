@@ -21,6 +21,7 @@ export default function WorkDetail() {
   const [pages, setPages] = useState<WorkPage[]>([])
   const [comments, setComments] = useState<Comment[]>([])
   const [followingMap, setFollowingMap] = useState<Record<number, boolean>>({})
+  const [mutualMap, setMutualMap] = useState<Record<number, boolean>>({})
   const [followLoading, setFollowLoading] = useState<Record<number, boolean>>({})
   const [isSubscribed, setIsSubscribed] = useState(false)
   const [subLoading, setSubLoading] = useState(false)
@@ -55,11 +56,13 @@ export default function WorkDetail() {
     const contribIds = work.contributors.map((c) => c.id).filter((cid) => cid !== user.id)
     if (contribIds.length === 0) return
     Promise.all(contribIds.map((cid) =>
-      followsApi.status(cid).then((s) => ({ id: cid, following: s.isFollowing })).catch(() => ({ id: cid, following: false }))
+      followsApi.status(cid).then((s) => ({ id: cid, following: s.isFollowing, mutual: s.isMutual })).catch(() => ({ id: cid, following: false, mutual: false }))
     )).then((results) => {
-      const map: Record<number, boolean> = {}
-      results.forEach((r) => { map[r.id] = r.following })
-      setFollowingMap(map)
+      const fMap: Record<number, boolean> = {}
+      const mMap: Record<number, boolean> = {}
+      results.forEach((r) => { fMap[r.id] = r.following; mMap[r.id] = r.mutual })
+      setFollowingMap(fMap)
+      setMutualMap(mMap)
     })
   }, [work, user])
 
@@ -70,9 +73,12 @@ export default function WorkDetail() {
       if (followingMap[targetId]) {
         await followsApi.unfollow(targetId)
         setFollowingMap((prev) => ({ ...prev, [targetId]: false }))
+        setMutualMap((prev) => ({ ...prev, [targetId]: false }))
       } else {
         await followsApi.follow(targetId)
+        const s = await followsApi.status(targetId).catch(() => ({ isMutual: false }))
         setFollowingMap((prev) => ({ ...prev, [targetId]: true }))
+        setMutualMap((prev) => ({ ...prev, [targetId]: s.isMutual }))
       }
     } catch (err: any) {
       // ignore
@@ -331,12 +337,14 @@ export default function WorkDetail() {
                   onClick={(e) => { e.stopPropagation(); handleToggleFollow(c.id) }}
                   disabled={followLoading[c.id]}
                   className={`ml-1 px-2 py-0.5 rounded-full text-[10px] font-medium transition-colors ${
-                    followingMap[c.id]
+                    mutualMap[c.id]
+                      ? 'bg-success/15 text-success'
+                      : followingMap[c.id]
                       ? 'bg-bg-secondary text-text-secondary'
                       : 'bg-primary text-white'
                   }`}
                 >
-                  {followingMap[c.id] ? '已关注' : '关注'}
+                  {mutualMap[c.id] ? '互相关注' : followingMap[c.id] ? '已关注' : '关注'}
                 </button>
               )}
             </div>
@@ -429,7 +437,7 @@ export default function WorkDetail() {
                         : 'bg-primary text-white'
                     }`}
                   >
-                    {followingMap[c.id] ? '已关注' : '关注'}
+                    {mutualMap[c.id] ? '互相关注' : followingMap[c.id] ? '已关注' : '关注'}
                   </button>
                 )}
               </div>

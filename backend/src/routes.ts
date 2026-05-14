@@ -101,6 +101,19 @@ router.get('/users/:id/following', (req: Request<{ id: string }>, res: Response)
   res.json(following)
 })
 
+// 互关好友列表（相互关注的用户，用于 @ 提及）
+router.get('/users/me/mutual-followers', requireAuth, (req: AuthRequest, res: Response) => {
+  const mutuals = db.prepare(`
+    SELECT u.id, u.nickname, u.avatar, u.username
+    FROM follows f1
+    JOIN follows f2 ON f1.following_id = f2.follower_id AND f1.follower_id = f2.following_id
+    JOIN users u ON f1.following_id = u.id
+    WHERE f1.follower_id = ?
+    ORDER BY u.nickname ASC
+  `).all(req.userId)
+  res.json(mutuals)
+})
+
 // ============ 作品 API ============
 
 router.get('/works', (req: Request<{}, {}, {}, { type?: string; sort?: string }>, res: Response) => {
@@ -471,6 +484,28 @@ router.post('/works/:id/comments', requireAuth, (req: AuthRequest<{ id: string }
     const commenter = db.prepare('SELECT nickname FROM users WHERE id = ?').get(req.userId) as { nickname: string }
     const msgContent = JSON.stringify({ type: 'comment_notify', workId: Number(req.params.id), workTitle: work.title, commentId, commenterName: commenter.nickname, text: content.substring(0, 50) })
     db.prepare("INSERT INTO messages (conversation_id, sender_id, content, msg_type) VALUES (?, 0, ?, 'system')").run(conv.id, msgContent)
+  }
+
+  // @提及通知：提取评论中的 @username 并通知被提及的用户
+  const mentionMatches = content.match(/@(\S+)/g)
+  if (mentionMatches) {
+    const mentionedUsernames = mentionMatches.map((m: string) => m.slice(1))
+    const workMentioned = db.prepare('SELECT id, title FROM works WHERE id = ?').get(req.params.id) as { id: number; title: string } | undefined
+    for (const username of mentionedUsernames) {
+      const mentionedUser = db.prepare('SELECT id FROM users WHERE username = ? AND id != ?').get(username, req.userId) as { id: number } | undefined
+      if (!mentionedUser) continue
+      // 查找或创建通知会话
+      let mConv = db.prepare(`SELECT c.id FROM conversations c JOIN conversation_members cm ON c.id = cm.conversation_id WHERE c.type = 'private' AND cm.user_id = ? AND c.id IN (SELECT conversation_id FROM conversation_members WHERE user_id = 0)`).get(mentionedUser.id) as { id: number } | undefined
+      if (!mConv) {
+        const mConvResult = db.prepare("INSERT INTO conversations (type, title) VALUES ('private', '系统通知')").run()
+        const mConvId = Number(mConvResult.lastInsertRowid)
+        db.prepare('INSERT OR IGNORE INTO conversation_members (conversation_id, user_id) VALUES (?, ?)').run(mConvId, mentionedUser.id)
+        db.prepare('INSERT OR IGNORE INTO conversation_members (conversation_id, user_id) VALUES (?, ?)').run(mConvId, 0)
+        mConv = { id: mConvId }
+      }
+      const mentionMsg = JSON.stringify({ type: 'mention_notify', workId: Number(req.params.id), workTitle: workMentioned?.title || '', commentId, mentionerName: commenter.nickname, text: content.substring(0, 50) })
+      db.prepare("INSERT INTO messages (conversation_id, sender_id, content, msg_type) VALUES (?, 0, ?, 'system')").run(mConv.id, mentionMsg)
+    }
   }
 
   res.json({ message: '评论成功' })
