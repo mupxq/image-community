@@ -90,6 +90,8 @@ export const commentsApi = {
   list: (workId: number) => request<import('../types').Comment[]>(`/works/${workId}/comments`),
   create: (workId: number, data: { content: string; parent_id?: number }) =>
     request<{ message: string }>(`/works/${workId}/comments`, { method: 'POST', body: JSON.stringify(data) }),
+  delete: (id: number) =>
+    request<{ message: string }>(`/comments/${id}`, { method: 'DELETE' }),
 }
 
 export const bookmarksApi = {

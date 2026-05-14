@@ -23,6 +23,7 @@ export default function CommentSection({ workId, comments: initialComments, high
   const [mentionIndex, setMentionIndex] = useState(-1)
   const [mentionPos, setMentionPos] = useState<{ top: number; left: number } | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [deleting, setDeleting] = useState<number | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -163,6 +164,19 @@ export default function CommentSection({ workId, comments: initialComments, high
     }
   }
 
+  const handleDelete = async (commentId: number) => {
+    if (deleting) return
+    setDeleting(commentId)
+    try {
+      await commentsApi.delete(commentId)
+      setComments(prev => prev.filter(c => c.id !== commentId && c.parent_id !== commentId))
+    } catch (err: any) {
+      // ignore
+    } finally {
+      setDeleting(null)
+    }
+  }
+
   const handleInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value
     setContent(val)
@@ -192,12 +206,23 @@ export default function CommentSection({ workId, comments: initialComments, high
             )}
             <div className="text-xs text-text-secondary mt-0.5">{renderContent(c.content)}</div>
             {user && (
-              <button
-                onClick={() => setReplyTo({ id: c.id, nickname: c.nickname })}
-                className="text-[10px] text-text-secondary hover:text-primary mt-1"
-              >
-                回复
-              </button>
+              <div className="flex items-center gap-3 mt-1">
+                <button
+                  onClick={() => setReplyTo({ id: c.id, nickname: c.nickname })}
+                  className="text-[10px] text-text-secondary hover:text-primary"
+                >
+                  回复
+                </button>
+                {user.id === c.user_id && (
+                  <button
+                    onClick={() => handleDelete(c.id)}
+                    disabled={deleting === c.id}
+                    className="text-[10px] text-text-secondary hover:text-accent-pink disabled:opacity-50"
+                  >
+                    {deleting === c.id ? '删除中...' : '删除'}
+                  </button>
+                )}
+              </div>
             )}
           </div>
         </div>

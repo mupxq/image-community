@@ -511,6 +511,21 @@ router.post('/works/:id/comments', requireAuth, (req: AuthRequest<{ id: string }
   res.json({ message: '评论成功' })
 })
 
+// 删除评论（仅评论作者可删除）
+router.delete('/comments/:id', requireAuth, (req: AuthRequest<{ id: string }>, res: Response) => {
+  const comment = db.prepare('SELECT id, user_id, work_id FROM comments WHERE id = ?').get(req.params.id) as { id: number; user_id: number; work_id: number } | undefined
+  if (!comment) {
+    return res.status(404).json({ error: '评论不存在' })
+  }
+  if (comment.user_id !== req.userId) {
+    return res.status(403).json({ error: '无权删除此评论' })
+  }
+  // 删除子回复
+  db.prepare('DELETE FROM comments WHERE parent_id = ?').run(comment.id)
+  db.prepare('DELETE FROM comments WHERE id = ?').run(comment.id)
+  res.json({ message: '评论已删除' })
+})
+
 // ============ 书架/收藏 API ============
 
 router.get('/users/:id/bookmarks', (req: Request<{ id: string }, {}, {}, { status?: string }>, res: Response) => {
