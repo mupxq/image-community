@@ -108,14 +108,6 @@ export default function Profile() {
               <div className="text-xl font-bold">{works.length}</div>
               <div className="text-[10px] text-text-secondary">作品</div>
             </div>
-            <div className="text-center cursor-pointer" onClick={() => navigate(`/user/${user.id}/followers`)}>
-              <div className="text-xl font-bold">{followerCount}</div>
-              <div className="text-[10px] text-text-secondary">粉丝</div>
-            </div>
-            <div className="text-center cursor-pointer" onClick={() => navigate(`/user/${user.id}/following`)}>
-              <div className="text-xl font-bold">{followingCount}</div>
-              <div className="text-[10px] text-text-secondary">关注</div>
-            </div>
             <button
               className="text-center hover:opacity-80 transition-opacity"
               onClick={() => setShowFollowList('followers')}

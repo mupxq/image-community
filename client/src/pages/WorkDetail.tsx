@@ -127,7 +127,7 @@ export default function WorkDetail() {
     if (!work) return
     if (!user) { navigate('/login'); return }
     const res = await worksApi.likeWork(work.id)
-    setWork(prev => prev ? { ...prev, liked: res.liked, like_count: (prev.like_count || 0) + (res.liked ? 1 : -1) } : prev)
+    setWork(prev => prev ? { ...prev, liked: res.liked, like_count: Math.max(0, (prev.like_count || 0) + (res.liked ? 1 : -1)) } : prev)
   }, [work, user, navigate])
 
   const handleLikePage = useCallback(async (pageId: number) => {
@@ -135,7 +135,7 @@ export default function WorkDetail() {
     const res = await worksApi.likePage(pageId)
     setPageLikes(prev => prev.map(p =>
       p.page_id === pageId
-        ? { ...p, liked: res.liked, like_count: p.like_count + (res.liked ? 1 : -1) }
+        ? { ...p, liked: res.liked, like_count: Math.max(0, p.like_count + (res.liked ? 1 : -1)) }
         : p
     ))
   }, [user, navigate])
@@ -309,14 +309,29 @@ export default function WorkDetail() {
         <div className="text-xs text-text-secondary mb-2">共创者 ({work.contributors.length}人)</div>
         <div className="flex flex-wrap gap-2">
           {work.contributors.map((c) => (
-            <div key={c.id} className="flex items-center gap-1.5 bg-bg-card px-2.5 py-1 rounded-full text-xs cursor-pointer" onClick={() => navigate(`/user/${c.id}`)}>
-              <UserAvatar avatar={c.avatar} nickname={c.nickname} size="sm" />
-              <span>{c.nickname}</span>
+            <div key={c.id} className="flex items-center gap-1.5 bg-bg-card px-2.5 py-1 rounded-full text-xs">
+              <span className="cursor-pointer flex items-center gap-1.5" onClick={() => navigate(`/user/${c.id}`)}>
+                <UserAvatar avatar={c.avatar} nickname={c.nickname} size="sm" />
+                <span>{c.nickname}</span>
+              </span>
               <span className={`px-1.5 py-0.5 rounded text-[10px] ${
                 c.role === 'creator' ? 'bg-primary/20 text-primary-light' : 'bg-accent/20 text-accent'
               }`}>
                 {c.role === 'creator' ? '创作者' : '上游作者'}
               </span>
+              {user && user.id !== c.id && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); handleToggleFollow(c.id) }}
+                  disabled={followLoading[c.id]}
+                  className={`ml-1 px-2 py-0.5 rounded-full text-[10px] font-medium transition-colors ${
+                    followingMap[c.id]
+                      ? 'bg-bg-secondary text-text-secondary'
+                      : 'bg-primary text-white'
+                  }`}
+                >
+                  {followingMap[c.id] ? '已关注' : '关注'}
+                </button>
+              )}
             </div>
           ))}
         </div>
