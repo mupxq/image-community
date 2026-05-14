@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
-import { worksApi, bookmarksApi, commentsApi } from '../api'
+import { worksApi, bookmarksApi, commentsApi, followsApi, subscriptionsApi } from '../api'
 import type { WorkDetail as WorkDetailType, WorkPage, Comment, PageLikeInfo, BranchWork } from '../types'
 import { useUser } from '../contexts/UserContext'
 import BackHeader from '../components/BackHeader'
@@ -20,6 +20,11 @@ export default function WorkDetail() {
   const [work, setWork] = useState<WorkDetailType | null>(null)
   const [pages, setPages] = useState<WorkPage[]>([])
   const [comments, setComments] = useState<Comment[]>([])
+  const [followingMap, setFollowingMap] = useState<Record<number, boolean>>({})
+  const [mutualMap, setMutualMap] = useState<Record<number, boolean>>({})
+  const [followLoading, setFollowLoading] = useState<Record<number, boolean>>({})
+  const [isSubscribed, setIsSubscribed] = useState(false)
+  const [subLoading, setSubLoading] = useState(false)
   const [showShare, setShowShare] = useState(false)
   const [pageLikes, setPageLikes] = useState<PageLikeInfo[]>([])
   const [expandedBranches, setExpandedBranches] = useState<Record<number, BranchWork[]>>({})
@@ -41,7 +46,64 @@ export default function WorkDetail() {
       setExpandedBranches({})
       setBranchCounts({})
     })
-  }, [id])
+    if (user) {
+      subscriptionsApi.check(Number(id)).then((s) => setIsSubscribed(s.subscribed)).catch(() => {})
+    }
+  }, [id, user])
+
+  useEffect(() => {
+    if (!user || !work) return
+    const contribIds = work.contributors.map((c) => c.id).filter((cid) => cid !== user.id)
+    if (contribIds.length === 0) return
+    Promise.all(contribIds.map((cid) =>
+      followsApi.status(cid).then((s) => ({ id: cid, following: s.isFollowing, mutual: s.isMutual })).catch(() => ({ id: cid, following: false, mutual: false }))
+    )).then((results) => {
+      const fMap: Record<number, boolean> = {}
+      const mMap: Record<number, boolean> = {}
+      results.forEach((r) => { fMap[r.id] = r.following; mMap[r.id] = r.mutual })
+      setFollowingMap(fMap)
+      setMutualMap(mMap)
+    })
+  }, [work, user])
+
+  const handleToggleFollow = async (targetId: number) => {
+    if (!user) { navigate('/login'); return }
+    setFollowLoading((prev) => ({ ...prev, [targetId]: true }))
+    try {
+      if (followingMap[targetId]) {
+        await followsApi.unfollow(targetId)
+        setFollowingMap((prev) => ({ ...prev, [targetId]: false }))
+        setMutualMap((prev) => ({ ...prev, [targetId]: false }))
+      } else {
+        await followsApi.follow(targetId)
+        const s = await followsApi.status(targetId).catch(() => ({ isMutual: false }))
+        setFollowingMap((prev) => ({ ...prev, [targetId]: true }))
+        setMutualMap((prev) => ({ ...prev, [targetId]: s.isMutual }))
+      }
+    } catch (err: any) {
+      // ignore
+    } finally {
+      setFollowLoading((prev) => ({ ...prev, [targetId]: false }))
+    }
+  }
+
+  const handleSubscribe = async () => {
+    if (!user || !work) { navigate('/login'); return }
+    setSubLoading(true)
+    try {
+      if (isSubscribed) {
+        await subscriptionsApi.unsubscribe(work.id)
+        setIsSubscribed(false)
+      } else {
+        await subscriptionsApi.subscribe(work.id)
+        setIsSubscribed(true)
+      }
+    } catch (err: any) {
+      // ignore
+    } finally {
+      setSubLoading(false)
+    }
+  }
 
   // 跳转到指定页（从分支进入时）
   useEffect(() => {
@@ -68,20 +130,27 @@ export default function WorkDetail() {
   }, [id, pages])
 
   const handleLikeWork = useCallback(async () => {
-    if (!work) return
     if (!user) { navigate('/login'); return }
-    const res = await worksApi.likeWork(work.id)
-    setWork(prev => prev ? { ...prev, liked: res.liked, like_count: (prev.like_count || 0) + (res.liked ? 1 : -1) } : prev)
-  }, [work, user, navigate])
+    try {
+      const res = await worksApi.likeWork(work!.id)
+      setWork(prev => prev ? { ...prev, liked: res.liked, like_count: Math.max(0, (prev.like_count || 0) + (res.liked ? 1 : -1)) } : prev)
+    } catch (err: any) {
+      // ignore
+    }
+  }, [work?.id, user, navigate])
 
   const handleLikePage = useCallback(async (pageId: number) => {
     if (!user) { navigate('/login'); return }
-    const res = await worksApi.likePage(pageId)
-    setPageLikes(prev => prev.map(p =>
-      p.page_id === pageId
-        ? { ...p, liked: res.liked, like_count: p.like_count + (res.liked ? 1 : -1) }
-        : p
-    ))
+    try {
+      const res = await worksApi.likePage(pageId)
+      setPageLikes(prev => prev.map(p =>
+        p.page_id === pageId
+          ? { ...p, liked: res.liked, like_count: Math.max(0, p.like_count + (res.liked ? 1 : -1)) }
+          : p
+      ))
+    } catch (err: any) {
+      // ignore
+    }
   }, [user, navigate])
 
   const toggleBranches = useCallback(async (pageNumber: number) => {
@@ -253,14 +322,31 @@ export default function WorkDetail() {
         <div className="text-xs text-text-secondary mb-2">共创者 ({work.contributors.length}人)</div>
         <div className="flex flex-wrap gap-2">
           {work.contributors.map((c) => (
-            <div key={c.id} className="flex items-center gap-1.5 bg-bg-card px-2.5 py-1 rounded-full text-xs cursor-pointer" onClick={() => navigate(`/user/${c.id}`)}>
-              <UserAvatar avatar={c.avatar} nickname={c.nickname} size="sm" />
-              <span>{c.nickname}</span>
+            <div key={c.id} className="flex items-center gap-1.5 bg-bg-card px-2.5 py-1 rounded-full text-xs">
+              <span className="cursor-pointer flex items-center gap-1.5" onClick={() => navigate(`/user/${c.id}`)}>
+                <UserAvatar avatar={c.avatar} nickname={c.nickname} size="sm" />
+                <span>{c.nickname}</span>
+              </span>
               <span className={`px-1.5 py-0.5 rounded text-[10px] ${
                 c.role === 'creator' ? 'bg-primary/20 text-primary-light' : 'bg-accent/20 text-accent'
               }`}>
                 {c.role === 'creator' ? '创作者' : '上游作者'}
               </span>
+              {user && user.id !== c.id && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); handleToggleFollow(c.id) }}
+                  disabled={followLoading[c.id]}
+                  className={`ml-1 px-2 py-0.5 rounded-full text-[10px] font-medium transition-colors ${
+                    mutualMap[c.id]
+                      ? 'bg-success/15 text-success'
+                      : followingMap[c.id]
+                      ? 'bg-bg-secondary text-text-secondary'
+                      : 'bg-primary text-white'
+                  }`}
+                >
+                  {mutualMap[c.id] ? '互相关注' : followingMap[c.id] ? '已关注' : '关注'}
+                </button>
+              )}
             </div>
           ))}
         </div>
@@ -341,6 +427,19 @@ export default function WorkDetail() {
                 }`}>
                   {c.role === 'creator' ? '创作者' : '上游作者'}
                 </span>
+                {user && user.id !== c.id && (
+                  <button
+                    onClick={() => handleToggleFollow(c.id)}
+                    disabled={followLoading[c.id]}
+                    className={`ml-1 px-2 py-0.5 rounded-full text-[10px] font-medium transition-colors ${
+                      followingMap[c.id]
+                        ? 'bg-bg-secondary text-text-secondary'
+                        : 'bg-primary text-white'
+                    }`}
+                  >
+                    {mutualMap[c.id] ? '互相关注' : followingMap[c.id] ? '已关注' : '关注'}
+                  </button>
+                )}
               </div>
             ))}
           </div>
@@ -386,6 +485,17 @@ export default function WorkDetail() {
             className="flex-1 py-2.5 bg-bg-card border border-border rounded-lg text-sm hover:border-primary transition-colors"
           >
             分享
+          </button>
+          <button
+            onClick={handleSubscribe}
+            disabled={subLoading}
+            className={`flex-1 py-2.5 rounded-lg text-sm transition-colors ${
+              isSubscribed
+                ? 'bg-bg-card border border-border hover:text-accent-pink'
+                : 'bg-bg-card border border-border hover:border-primary'
+            }`}
+          >
+            {isSubscribed ? '已订阅' : '订阅'}
           </button>
         </div>
         {user && user.id === work.creator_id && (

@@ -105,7 +105,8 @@ export default function Create() {
     if (!title.trim()) return alert('请输入标题')
     if (!pages[0]?.description.trim()) return alert('请至少填写第一页场景描述')
     if (!coverImage) {
-      if (!confirm('生成或上传封面图可以更好地吸引读者，确定不添加封面直接发布吗？')) return
+      const proceed = confirm('添加封面图可以更好地吸引读者。\n\n点击「确定」直接发布（无封面）\n点击「取消」返回添加封面')
+      if (!proceed) return
     }
     await worksApi.create({ title: title.trim(), description: desc.trim(), type, pages, cover_image: coverImage || undefined, allow_fork: allowFork ? 1 : 0 })
     navigate('/')

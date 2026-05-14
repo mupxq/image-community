@@ -47,7 +47,7 @@ export default function Register() {
   return (
     <div className="min-h-screen bg-bg flex items-center justify-center p-4">
       <div className="w-full max-w-sm">
-        <h1 className="text-2xl font-bold text-text text-center mb-8">注册影像社区</h1>
+        <h1 className="text-2xl font-bold text-text text-center mb-8">注册 CoCoNut</h1>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>

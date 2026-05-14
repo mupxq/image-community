@@ -5,10 +5,14 @@ function getToken(): string | null {
 }
 
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  const headers: Record<string, string> = {}
   const token = getToken()
   if (token) {
     headers['Authorization'] = `Bearer ${token}`
+  }
+  // 只在有 body 时设置 Content-Type，避免 body-less POST 触发不必要的 CORS preflight
+  if (options?.body) {
+    headers['Content-Type'] = 'application/json'
   }
   const res = await fetch(`${API}${url}`, {
     ...options,
@@ -65,7 +69,7 @@ export const worksApi = {
   },
   getById: (id: number) => request<import('../types').WorkDetail>(`/works/${id}`),
   getPages: (id: number) => request<import('../types').WorkPage[]>(`/works/${id}/pages`),
-  getTree: (id: number) => request<import('../types').TreeNode>(`/works/${id}/tree`),
+  getTree: (id: number) => request<import('../types').ChapterTreeData>(`/works/${id}/tree`),
   create: (data: { title: string; description: string; type: string; pages?: import('../types').PageInput[]; cover_image?: string; allow_fork?: number }) =>
     request<{ id: number; message: string }>('/works', { method: 'POST', body: JSON.stringify(data) }),
   fork: (parentId: number, data: { subtitle: string; description?: string; pages?: import('../types').PageInput[]; cover_image?: string; fork_from_page?: number }) =>
@@ -86,6 +90,8 @@ export const commentsApi = {
   list: (workId: number) => request<import('../types').Comment[]>(`/works/${workId}/comments`),
   create: (workId: number, data: { content: string; parent_id?: number }) =>
     request<{ message: string }>(`/works/${workId}/comments`, { method: 'POST', body: JSON.stringify(data) }),
+  delete: (id: number) =>
+    request<{ message: string }>(`/comments/${id}`, { method: 'DELETE' }),
 }
 
 export const bookmarksApi = {
@@ -105,6 +111,8 @@ export const bookmarksApi = {
 
 export const conversationsApi = {
   list: (userId: number) => request<import('../types').Conversation[]>(`/users/${userId}/conversations`),
+  create: (targetUserId: number) =>
+    request<{ conversation_id: number; created: boolean }>('/conversations', { method: 'POST', body: JSON.stringify({ target_user_id: targetUserId }) }),
   getMessages: (convId: number) =>
     request<{ conversation: import('../types').Conversation; members: import('../types').User[]; messages: import('../types').Message[] }>(`/conversations/${convId}/messages`),
   sendMessage: (convId: number, data: { content: string; msg_type?: string }) =>
@@ -163,6 +171,21 @@ export const followsApi = {
     request<import('../types').User[]>(`/users/${userId}/followers`),
   following: (userId: number) =>
     request<import('../types').User[]>(`/users/${userId}/following`),
+  mutualFollowers: () =>
+    request<{ id: number; nickname: string; avatar: string; username: string }[]>('/users/me/mutual-followers'),
+}
+
+export const subscriptionsApi = {
+  list: (userId: number) =>
+    request<import('../types').Subscription[]>(`/users/${userId}/subscriptions`),
+  subscribe: (workId: number) =>
+    request<{ message: string }>('/subscriptions', { method: 'POST', body: JSON.stringify({ work_id: workId }) }),
+  unsubscribe: (workId: number) =>
+    request<{ message: string }>(`/subscriptions/${workId}`, { method: 'DELETE' }),
+  check: (workId: number) =>
+    request<{ subscribed: boolean; last_viewed_fork_count: number }>(`/subscriptions/check?work_id=${workId}`),
+  markViewed: (workId: number) =>
+    request<{ message: string }>(`/subscriptions/${workId}/viewed`, { method: 'PUT' }),
 }
 
 export const uploadApi = {

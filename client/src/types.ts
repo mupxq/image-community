@@ -149,6 +149,32 @@ export interface TreeNode {
   children: TreeNode[]
 }
 
+export interface ChapterTreeWork {
+  id: number
+  title: string
+  subtitle: string
+  type: string
+  parent_work_id: number | null
+  root_work_id: number | null
+  fork_from_page: number | null
+  creator_id: number
+  creator_name: string
+}
+
+export interface ChapterTreePage {
+  id: number
+  work_id: number
+  page_number: number
+  description: string
+  dialogue: string
+}
+
+export interface ChapterTreeData {
+  works: ChapterTreeWork[]
+  pages: ChapterTreePage[]
+  rootWorkId: number
+}
+
 export interface PageInput {
   description: string
   dialogue: string
@@ -192,6 +218,24 @@ export interface AIGeneratePage {
   dialogue: string
   image_url?: string
   ai_generated: boolean
+}
+
+export interface Subscription {
+  id: number
+  user_id: number
+  work_id: number
+  last_viewed_fork_count: number
+  created_at: string
+  title: string
+  description: string
+  type: 'comic' | 'drama' | 'novel'
+  cover_image: string
+  creator_name: string
+  creator_avatar: string
+  total_pages: number
+  current_fork_count: number
+  has_update: boolean
+  new_fork_count: number
 }
 
 export interface AIGenerateResult {

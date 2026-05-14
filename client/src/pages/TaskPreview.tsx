@@ -73,7 +73,8 @@ export default function TaskPreview() {
   const handlePublish = async () => {
     if (!id) return
     if (!coverImage) {
-      if (!confirm('生成或上传封面图可以更好地吸引读者，确定不添加封面直接发布吗？')) return
+      const proceed = confirm('添加封面图可以更好地吸引读者。\n\n点击「确定」直接发布（无封面）\n点击「取消」返回添加封面')
+      if (!proceed) return
     }
     setPublishing(true)
     try {

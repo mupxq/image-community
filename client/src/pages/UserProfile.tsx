@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { usersApi, followsApi } from '../api'
+import { usersApi, followsApi, conversationsApi } from '../api'
 import type { Work } from '../types'
 import { useUser } from '../contexts/UserContext'
 import BackHeader from '../components/BackHeader'
 import WorkCard from '../components/WorkCard'
+import FollowListModal from '../components/FollowListModal'
 import UserAvatar from '../components/UserAvatar'
 
 interface UserInfo {
@@ -26,6 +27,7 @@ export default function UserProfile() {
   const [isFollowing, setIsFollowing] = useState(false)
   const [isMutual, setIsMutual] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [showFollowList, setShowFollowList] = useState<'followers' | 'following' | null>(null)
 
   const isMe = currentUser && id && currentUser.id === Number(id)
 
@@ -40,6 +42,16 @@ export default function UserProfile() {
       }).catch(() => {})
     }
   }, [id, currentUser])
+
+  const handleDM = async () => {
+    if (!id || !currentUser) { navigate('/login'); return }
+    try {
+      const res = await conversationsApi.create(Number(id))
+      navigate(`/chat/${res.conversation_id}`)
+    } catch (err: any) {
+      alert(err.message || '操作失败')
+    }
+  }
 
   const handleFollow = async () => {
     if (!id || !currentUser) { navigate('/login'); return }
@@ -83,28 +95,42 @@ export default function UserProfile() {
               <div className="text-xl font-bold">{works.length}</div>
               <div className="text-[10px] text-text-secondary">作品</div>
             </div>
-            <div className="text-center cursor-pointer" onClick={() => navigate(`/user/${id}/followers`)}>
+            <button
+              className="text-center hover:opacity-80 transition-opacity"
+              onClick={() => setShowFollowList('followers')}
+            >
               <div className="text-xl font-bold">{userInfo.followerCount}</div>
               <div className="text-[10px] text-text-secondary">粉丝</div>
-            </div>
-            <div className="text-center cursor-pointer" onClick={() => navigate(`/user/${id}/following`)}>
+            </button>
+            <button
+              className="text-center hover:opacity-80 transition-opacity"
+              onClick={() => setShowFollowList('following')}
+            >
               <div className="text-xl font-bold">{userInfo.followingCount}</div>
               <div className="text-[10px] text-text-secondary">关注</div>
-            </div>
+            </button>
           </div>
 
           {!isMe && (
-            <button
-              onClick={handleFollow}
-              disabled={loading}
-              className={`mt-4 px-6 py-2 rounded-lg text-sm font-medium transition-colors ${
-                isFollowing
-                  ? 'bg-bg-secondary border border-border text-text-secondary hover:text-accent-pink'
-                  : 'bg-primary text-white hover:bg-primary-light'
-              }`}
-            >
-              {isMutual ? '互相关注' : isFollowing ? '已关注' : '关注'}
-            </button>
+            <div className="mt-4 flex gap-2 justify-center">
+              <button
+                onClick={handleFollow}
+                disabled={loading}
+                className={`px-6 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  isFollowing
+                    ? 'bg-bg-secondary border border-border text-text-secondary hover:text-accent-pink'
+                    : 'bg-primary text-white hover:bg-primary-light'
+                }`}
+              >
+                {isMutual ? '互相关注' : isFollowing ? '已关注' : '关注'}
+              </button>
+              <button
+                onClick={handleDM}
+                className="px-6 py-2 rounded-lg text-sm font-medium bg-bg-secondary border border-border text-text-secondary hover:border-primary hover:text-primary transition-colors"
+              >
+                私信
+              </button>
+            </div>
           )}
 
           {isMe && (
@@ -123,6 +149,14 @@ export default function UserProfile() {
           ))}
         </div>
       </div>
+
+      {showFollowList && id && (
+        <FollowListModal
+          userId={Number(id)}
+          type={showFollowList}
+          onClose={() => setShowFollowList(null)}
+        />
+      )}
     </div>
   )
 }

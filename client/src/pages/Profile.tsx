@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { usersApi, creditsApi, tasksApi, followsApi } from '../api'
 import type { Work } from '../types'
 import { useUser } from '../contexts/UserContext'
+import FollowListModal from '../components/FollowListModal'
 import UserAvatar from '../components/UserAvatar'
 
 export default function Profile() {
@@ -19,6 +20,7 @@ export default function Profile() {
   const [showLogs, setShowLogs] = useState(false)
   const [followerCount, setFollowerCount] = useState(0)
   const [followingCount, setFollowingCount] = useState(0)
+  const [showFollowList, setShowFollowList] = useState<'followers' | 'following' | null>(null)
   const avatarInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -41,8 +43,8 @@ export default function Profile() {
     tasksApi.list().then(setTasks).catch(() => {})
     creditsApi.logs().then(setCreditLogs).catch(() => {})
     usersApi.getById(user.id).then((u: any) => {
-      setFollowerCount(u.followerCount || 0)
-      setFollowingCount(u.followingCount || 0)
+      setFollowerCount(u.followerCount ?? 0)
+      setFollowingCount(u.followingCount ?? 0)
     }).catch(() => {})
   }, [user])
 
@@ -66,7 +68,7 @@ export default function Profile() {
         <div className="px-4 pt-5">
           <div className="bg-bg-card rounded-2xl p-8 text-center">
             <div className="text-5xl mb-4">👤</div>
-            <h2 className="text-lg font-bold">登录影像社区</h2>
+            <h2 className="text-lg font-bold">登录 CoCoNut</h2>
             <p className="text-sm text-text-secondary mt-2">登录后可以创作、收藏、互动交流</p>
             <button
               onClick={() => navigate('/login')}
@@ -106,14 +108,20 @@ export default function Profile() {
               <div className="text-xl font-bold">{works.length}</div>
               <div className="text-[10px] text-text-secondary">作品</div>
             </div>
-            <div className="text-center cursor-pointer" onClick={() => navigate(`/user/${user.id}/followers`)}>
+            <button
+              className="text-center hover:opacity-80 transition-opacity"
+              onClick={() => setShowFollowList('followers')}
+            >
               <div className="text-xl font-bold">{followerCount}</div>
               <div className="text-[10px] text-text-secondary">粉丝</div>
-            </div>
-            <div className="text-center cursor-pointer" onClick={() => navigate(`/user/${user.id}/following`)}>
+            </button>
+            <button
+              className="text-center hover:opacity-80 transition-opacity"
+              onClick={() => setShowFollowList('following')}
+            >
               <div className="text-xl font-bold">{followingCount}</div>
               <div className="text-[10px] text-text-secondary">关注</div>
-            </div>
+            </button>
             <div className="text-center">
               <div className="text-xl font-bold text-primary">{credits ?? '...'}</div>
               <div className="text-[10px] text-text-secondary">积分</div>
@@ -226,6 +234,14 @@ export default function Profile() {
             </div>
           ))}
         </div>
+      )}
+
+      {showFollowList && (
+        <FollowListModal
+          userId={user.id}
+          type={showFollowList}
+          onClose={() => setShowFollowList(null)}
+        />
       )}
     </div>
   )

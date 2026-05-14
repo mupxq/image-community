@@ -14,7 +14,17 @@ export default function Chat() {
   const [members, setMembers] = useState<User[]>([])
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
+  const [showEmoji, setShowEmoji] = useState(false)
+  const [emojiTab, setEmojiTab] = useState<'emoji' | 'sticker'>('emoji')
   const bottomRef = useRef<HTMLDivElement>(null)
+
+  const emojis = ['😀','😂','🤣','😍','🥰','😘','😜','🤪','😎','🤩','😇','🤗','😤','😢','😭','😡','🤬','👍','👎','🙏','💪','🔥','⭐','✨','💖','💔','🎉','🎊','🌸','🌺','🐱','🐶','🦊','🐼','🍕','🍔','☕','🎵','💯','✅']
+
+  const stickers = ['🎬','🎭','📖','🎨','🌟','💫','🫧','🎪','🦄','🐉','🌈','⚡','🍿','🎯','💡','🔮','🪄','🎁','💌','💝']
+
+  const insertEmoji = (emoji: string) => {
+    setInput(prev => prev + emoji)
+  }
 
   const load = async () => {
     if (!id) return
@@ -45,7 +55,7 @@ export default function Chat() {
     <div className="pb-0 md:max-w-[700px] md:mx-auto">
       <BackHeader title={title} />
 
-      <div className="px-4 pb-20 min-h-[calc(100vh-60px)]">
+      <div className="px-4 pb-16 min-h-[calc(100vh-60px)]">
         {conversation?.type === 'group' && conversation.work_id && (
           <div className="text-center text-xs text-text-secondary py-2 bg-bg-secondary rounded-lg mb-3">
             共创群聊 · {members.length}人
@@ -62,6 +72,24 @@ export default function Chat() {
                   <div key={msg.id} onClick={() => navigate(`/work/${parsed.workId}?comment=${parsed.commentId}`)} className="text-center cursor-pointer">
                     <div className="inline-block bg-bg-secondary rounded-lg px-3 py-2 text-xs text-text-secondary hover:bg-primary/10 transition-colors">
                       <span className="text-primary font-medium">{parsed.commenterName}</span> 评论了你的作品「{parsed.workTitle}」：{parsed.text}
+                    </div>
+                  </div>
+                )
+              }
+              if (parsed?.type === 'mention_notify') {
+                return (
+                  <div key={msg.id} onClick={() => navigate(`/work/${parsed.workId}?comment=${parsed.commentId}`)} className="text-center cursor-pointer">
+                    <div className="inline-block bg-bg-secondary rounded-lg px-3 py-2 text-xs text-text-secondary hover:bg-primary/10 transition-colors">
+                      <span className="text-primary font-medium">{parsed.mentionerName}</span> 在「{parsed.workTitle}」的评论中 @了你：{parsed.text}
+                    </div>
+                  </div>
+                )
+              }
+              if (parsed?.type === 'like_notify') {
+                return (
+                  <div key={msg.id} onClick={() => navigate(`/work/${parsed.workId}`)} className="text-center cursor-pointer">
+                    <div className="inline-block bg-bg-secondary rounded-lg px-3 py-2 text-xs text-text-secondary hover:bg-primary/10 transition-colors">
+                      <span className="text-primary font-medium">{parsed.likerName}</span> 点赞了你的作品「{parsed.workTitle}」
                     </div>
                   </div>
                 )
@@ -93,8 +121,37 @@ export default function Chat() {
         <div ref={bottomRef} />
       </div>
 
+      {/* Emoji / Sticker picker */}
+      {showEmoji && (
+        <div className="fixed bottom-16 left-1/2 -translate-x-1/2 w-full max-w-[430px] md:max-w-[700px] bg-bg-card border border-border rounded-xl shadow-lg z-50 p-3">
+          <div className="flex gap-2 mb-2">
+            <button
+              onClick={() => setEmojiTab('emoji')}
+              className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${emojiTab === 'emoji' ? 'bg-primary text-white' : 'bg-bg-secondary text-text-secondary'}`}
+            >表情</button>
+            <button
+              onClick={() => setEmojiTab('sticker')}
+              className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${emojiTab === 'sticker' ? 'bg-primary text-white' : 'bg-bg-secondary text-text-secondary'}`}
+            >动图</button>
+          </div>
+          <div className="grid grid-cols-8 gap-1 max-h-40 overflow-y-auto">
+            {(emojiTab === 'emoji' ? emojis : stickers).map((e, i) => (
+              <button
+                key={i}
+                onClick={() => { insertEmoji(e); setShowEmoji(false) }}
+                className="w-9 h-9 flex items-center justify-center text-lg hover:bg-bg-secondary rounded-lg transition-colors"
+              >{e}</button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Input bar */}
       <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] md:max-w-[700px] bg-bg-card border-t border-border flex gap-2 p-3 z-40">
+        <button
+          onClick={() => setShowEmoji(!showEmoji)}
+          className={`w-10 h-10 flex items-center justify-center rounded-full text-lg transition-colors ${showEmoji ? 'bg-primary/20 text-primary' : 'bg-bg-secondary text-text-secondary hover:bg-bg-secondary/80'}`}
+        >😊</button>
         <input
           className="flex-1 bg-bg-secondary border border-border rounded-full px-4 py-2 text-sm text-text placeholder:text-text-secondary focus:outline-none focus:border-primary"
           placeholder="输入消息..."

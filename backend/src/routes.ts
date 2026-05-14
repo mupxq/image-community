@@ -101,6 +101,19 @@ router.get('/users/:id/following', (req: Request<{ id: string }>, res: Response)
   res.json(following)
 })
 
+// 互关好友列表（相互关注的用户，用于 @ 提及）
+router.get('/users/me/mutual-followers', requireAuth, (req: AuthRequest, res: Response) => {
+  const mutuals = db.prepare(`
+    SELECT u.id, u.nickname, u.avatar, u.username
+    FROM follows f1
+    JOIN follows f2 ON f1.following_id = f2.follower_id AND f1.follower_id = f2.following_id
+    JOIN users u ON f1.following_id = u.id
+    WHERE f1.follower_id = ?
+    ORDER BY u.nickname ASC
+  `).all(req.userId)
+  res.json(mutuals)
+})
+
 // ============ 作品 API ============
 
 router.get('/works', (req: Request<{}, {}, {}, { type?: string; sort?: string }>, res: Response) => {
@@ -176,20 +189,6 @@ router.get('/works/:id/pages', (req: Request<{ id: string }>, res: Response) => 
   res.json(pages)
 })
 
-interface TreeNodeRow extends Record<string, unknown> {
-  id: number
-  title: string
-  cover_image: string
-  type: string
-  parent_work_id: number | null
-  root_work_id: number | null
-  creator_id: number
-  created_at: string
-  creator_name: string
-  creator_avatar: string
-  fork_count: number
-}
-
 router.get('/works/:id/tree', (req: Request<{ id: string }>, res: Response) => {
   const work = db.prepare('SELECT * FROM works WHERE id = ?').get(req.params.id) as WorkRow | undefined
   if (!work) return res.status(404).json({ error: '作品不存在' })
@@ -197,27 +196,30 @@ router.get('/works/:id/tree', (req: Request<{ id: string }>, res: Response) => {
   const rootId = work.root_work_id || work.id
 
   const allWorks = db.prepare(`
-    SELECT w.id, w.title, w.cover_image, w.type, w.parent_work_id, w.root_work_id,
-      w.creator_id, w.created_at,
-      u.nickname as creator_name, u.avatar as creator_avatar,
-      (SELECT COUNT(*) FROM works w2 WHERE w2.parent_work_id = w.id) as fork_count
+    SELECT w.id, w.title, w.subtitle, w.type, w.parent_work_id, w.root_work_id,
+      w.fork_from_page, w.creator_id,
+      u.nickname as creator_name
     FROM works w
     JOIN users u ON w.creator_id = u.id
     WHERE (w.root_work_id = ? OR w.id = ?) AND w.status = 'published'
     ORDER BY w.created_at ASC
-  `).all(rootId, rootId) as TreeNodeRow[]
+  `).all(rootId, rootId) as any[]
 
-  function buildTree(works: TreeNodeRow[], parentId: number | null): (TreeNodeRow & { children: ReturnType<typeof buildTree> })[] {
-    return works
-      .filter(w => (parentId === null ? w.id === rootId : w.parent_work_id === parentId))
-      .map(w => ({
-        ...w,
-        children: buildTree(works, w.id)
-      }))
-  }
+  const workIds = allWorks.map(w => w.id)
+  const allPages = workIds.length > 0
+    ? db.prepare(`
+        SELECT id, work_id, page_number, description, dialogue
+        FROM work_pages
+        WHERE work_id IN (${workIds.map(() => '?').join(',')})
+        ORDER BY work_id, page_number ASC
+      `).all(...workIds) as any[]
+    : []
 
-  const tree = buildTree(allWorks, null)
-  res.json(tree.length > 0 ? tree[0] : null)
+  res.json({
+    works: allWorks,
+    pages: allPages,
+    rootWorkId: rootId,
+  })
 })
 
 interface PageInput {
@@ -473,7 +475,44 @@ router.post('/works/:id/comments', requireAuth, (req: AuthRequest<{ id: string }
     db.prepare("INSERT INTO messages (conversation_id, sender_id, content, msg_type) VALUES (?, 0, ?, 'system')").run(conv.id, msgContent)
   }
 
+  // @提及通知：提取评论中的 @username 并通知被提及的用户
+  const mentionMatches = content.match(/@(\S+)/g)
+  if (mentionMatches) {
+    const mentionedUsernames = mentionMatches.map((m: string) => m.slice(1))
+    const workMentioned = db.prepare('SELECT id, title FROM works WHERE id = ?').get(req.params.id) as { id: number; title: string } | undefined
+    for (const username of mentionedUsernames) {
+      const mentionedUser = db.prepare('SELECT id FROM users WHERE username = ? AND id != ?').get(username, req.userId) as { id: number } | undefined
+      if (!mentionedUser) continue
+      // 查找或创建通知会话
+      let mConv = db.prepare(`SELECT c.id FROM conversations c JOIN conversation_members cm ON c.id = cm.conversation_id WHERE c.type = 'private' AND cm.user_id = ? AND c.id IN (SELECT conversation_id FROM conversation_members WHERE user_id = 0)`).get(mentionedUser.id) as { id: number } | undefined
+      if (!mConv) {
+        const mConvResult = db.prepare("INSERT INTO conversations (type, title) VALUES ('private', '系统通知')").run()
+        const mConvId = Number(mConvResult.lastInsertRowid)
+        db.prepare('INSERT OR IGNORE INTO conversation_members (conversation_id, user_id) VALUES (?, ?)').run(mConvId, mentionedUser.id)
+        db.prepare('INSERT OR IGNORE INTO conversation_members (conversation_id, user_id) VALUES (?, ?)').run(mConvId, 0)
+        mConv = { id: mConvId }
+      }
+      const mentionMsg = JSON.stringify({ type: 'mention_notify', workId: Number(req.params.id), workTitle: workMentioned?.title || '', commentId, mentionerName: commenter.nickname, text: content.substring(0, 50) })
+      db.prepare("INSERT INTO messages (conversation_id, sender_id, content, msg_type) VALUES (?, 0, ?, 'system')").run(mConv.id, mentionMsg)
+    }
+  }
+
   res.json({ message: '评论成功' })
+})
+
+// 删除评论（仅评论作者可删除）
+router.delete('/comments/:id', requireAuth, (req: AuthRequest<{ id: string }>, res: Response) => {
+  const comment = db.prepare('SELECT id, user_id, work_id FROM comments WHERE id = ?').get(req.params.id) as { id: number; user_id: number; work_id: number } | undefined
+  if (!comment) {
+    return res.status(404).json({ error: '评论不存在' })
+  }
+  if (comment.user_id !== req.userId) {
+    return res.status(403).json({ error: '无权删除此评论' })
+  }
+  // 删除子回复
+  db.prepare('DELETE FROM comments WHERE parent_id = ?').run(comment.id)
+  db.prepare('DELETE FROM comments WHERE id = ?').run(comment.id)
+  res.json({ message: '评论已删除' })
 })
 
 // ============ 书架/收藏 API ============
@@ -539,6 +578,56 @@ router.get('/bookmarks/check', (req: AuthRequest<{}, {}, {}, { work_id?: string 
   res.json({ bookmarked: !!bookmark, bookmark })
 })
 
+// ============ 订阅 API ============
+
+router.get('/users/:id/subscriptions', (req: Request<{ id: string }>, res: Response) => {
+  const subs = db.prepare(`
+    SELECT s.*, w.title, w.description, w.type, w.cover_image,
+      u.nickname as creator_name, u.avatar as creator_avatar,
+      (SELECT COUNT(*) FROM work_pages wp WHERE wp.work_id = w.id) as total_pages,
+      (SELECT COUNT(*) FROM works w2 WHERE w2.parent_work_id = w.id) as current_fork_count
+    FROM subscriptions s
+    JOIN works w ON s.work_id = w.id
+    JOIN users u ON w.creator_id = u.id
+    WHERE s.user_id = ?
+    ORDER BY s.created_at DESC
+  `).all(req.params.id) as any[]
+  const result = subs.map(s => ({
+    ...s,
+    has_update: (s.current_fork_count ?? 0) > (s.last_viewed_fork_count ?? 0),
+    new_fork_count: Math.max(0, (s.current_fork_count ?? 0) - (s.last_viewed_fork_count ?? 0)),
+  }))
+  res.json(result)
+})
+
+router.post('/subscriptions', requireAuth, (req: AuthRequest, res: Response) => {
+  const { work_id } = req.body as { work_id?: number }
+  if (!work_id) return res.status(400).json({ error: '参数缺失' })
+  const currentForkCount = (db.prepare('SELECT COUNT(*) as c FROM works WHERE parent_work_id = ?').get(work_id) as any).c
+  db.prepare('INSERT OR IGNORE INTO subscriptions (user_id, work_id, last_viewed_fork_count) VALUES (?, ?, ?)').run(req.userId, work_id, currentForkCount)
+  res.json({ message: '已订阅' })
+})
+
+router.delete('/subscriptions/:workId', requireAuth, (req: AuthRequest<{ workId: string }>, res: Response) => {
+  db.prepare('DELETE FROM subscriptions WHERE user_id = ? AND work_id = ?').run(req.userId, req.params.workId)
+  res.json({ message: '已取消订阅' })
+})
+
+router.get('/subscriptions/check', (req: AuthRequest<{}, {}, {}, { work_id?: string }>, res: Response) => {
+  const { work_id } = req.query
+  if (!req.userId || !work_id) {
+    return res.json({ subscribed: false, last_viewed_fork_count: 0 })
+  }
+  const sub = db.prepare('SELECT * FROM subscriptions WHERE user_id = ? AND work_id = ?').get(req.userId, work_id) as any
+  res.json({ subscribed: !!sub, last_viewed_fork_count: sub?.last_viewed_fork_count ?? 0 })
+})
+
+router.put('/subscriptions/:workId/viewed', requireAuth, (req: AuthRequest<{ workId: string }>, res: Response) => {
+  const currentForkCount = (db.prepare('SELECT COUNT(*) as c FROM works WHERE parent_work_id = ?').get(req.params.workId) as any).c
+  db.prepare('UPDATE subscriptions SET last_viewed_fork_count = ? WHERE user_id = ? AND work_id = ?').run(currentForkCount, req.userId, req.params.workId)
+  res.json({ message: '已更新' })
+})
+
 // ============ 消息 API ============
 
 interface ConversationRow extends Record<string, unknown> {
@@ -590,6 +679,35 @@ router.get('/users/:id/conversations', (req: Request<{ id: string }>, res: Respo
   })
 
   res.json(convWithMembers)
+})
+
+router.post('/conversations', requireAuth, (req: AuthRequest, res: Response) => {
+  const { target_user_id } = req.body as { target_user_id?: number }
+  if (!target_user_id) return res.status(400).json({ error: '参数缺失' })
+  if (target_user_id === req.userId) return res.status(400).json({ error: '不能和自己创建会话' })
+
+  const targetUser = db.prepare('SELECT id FROM users WHERE id = ?').get(target_user_id) as any
+  if (!targetUser) return res.status(404).json({ error: '用户不存在' })
+
+  // 查找是否已有两人之间的私聊会话
+  const existing = db.prepare(`
+    SELECT c.id FROM conversations c
+    WHERE c.type = 'private'
+      AND EXISTS (SELECT 1 FROM conversation_members cm WHERE cm.conversation_id = c.id AND cm.user_id = ?)
+      AND EXISTS (SELECT 1 FROM conversation_members cm WHERE cm.conversation_id = c.id AND cm.user_id = ?)
+      AND (SELECT COUNT(*) FROM conversation_members cm WHERE cm.conversation_id = c.id) = 2
+    LIMIT 1
+  `).get(req.userId, target_user_id) as { id: number } | undefined
+
+  if (existing) {
+    return res.json({ conversation_id: existing.id, created: false })
+  }
+
+  const result = db.prepare('INSERT INTO conversations (type) VALUES (?)').run('private')
+  const convId = Number(result.lastInsertRowid)
+  db.prepare('INSERT INTO conversation_members (conversation_id, user_id) VALUES (?, ?)').run(convId, req.userId)
+  db.prepare('INSERT INTO conversation_members (conversation_id, user_id) VALUES (?, ?)').run(convId, target_user_id)
+  res.json({ conversation_id: convId, created: true })
 })
 
 router.get('/conversations/:id/messages', (req: Request<{ id: string }>, res: Response) => {
