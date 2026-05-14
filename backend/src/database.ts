@@ -249,4 +249,42 @@ if (!commentCols.includes('parent_id')) {
   db.exec("ALTER TABLE comments ADD COLUMN parent_id INTEGER DEFAULT NULL")
 }
 
+// 迁移：works 表加 allow_fork、fork_from_page、subtitle 字段
+const workCols = (db.prepare("PRAGMA table_info(works)").all() as { name: string }[]).map(c => c.name)
+if (!workCols.includes('allow_fork')) {
+  db.exec("ALTER TABLE works ADD COLUMN allow_fork INTEGER DEFAULT 1")
+}
+if (!workCols.includes('fork_from_page')) {
+  db.exec("ALTER TABLE works ADD COLUMN fork_from_page INTEGER DEFAULT NULL")
+}
+if (!workCols.includes('subtitle')) {
+  db.exec("ALTER TABLE works ADD COLUMN subtitle TEXT DEFAULT ''")
+}
+
+// 点亮分页表
+db.exec(`
+  CREATE TABLE IF NOT EXISTS page_likes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    page_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (page_id) REFERENCES work_pages(id),
+    FOREIGN KEY (user_id) REFERENCES users(id),
+    UNIQUE(page_id, user_id)
+  );
+`)
+
+// 作品点赞表
+db.exec(`
+  CREATE TABLE IF NOT EXISTS work_likes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    work_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (work_id) REFERENCES works(id),
+    FOREIGN KEY (user_id) REFERENCES users(id),
+    UNIQUE(work_id, user_id)
+  );
+`)
+
 export default db

@@ -66,12 +66,20 @@ export const worksApi = {
   getById: (id: number) => request<import('../types').WorkDetail>(`/works/${id}`),
   getPages: (id: number) => request<import('../types').WorkPage[]>(`/works/${id}/pages`),
   getTree: (id: number) => request<import('../types').TreeNode>(`/works/${id}/tree`),
-  create: (data: { title: string; description: string; type: string; pages?: import('../types').PageInput[]; cover_image?: string }) =>
+  create: (data: { title: string; description: string; type: string; pages?: import('../types').PageInput[]; cover_image?: string; allow_fork?: number }) =>
     request<{ id: number; message: string }>('/works', { method: 'POST', body: JSON.stringify(data) }),
-  fork: (parentId: number, data: { title: string; description: string; pages?: import('../types').PageInput[]; cover_image?: string }) =>
+  fork: (parentId: number, data: { subtitle: string; description?: string; pages?: import('../types').PageInput[]; cover_image?: string; fork_from_page?: number }) =>
     request<{ id: number; message: string }>(`/works/${parentId}/fork`, { method: 'POST', body: JSON.stringify(data) }),
   delete: (id: number) =>
     request<{ message: string }>(`/works/${id}`, { method: 'DELETE' }),
+  getBranches: (id: number, page: number) =>
+    request<import('../types').BranchWork[]>(`/works/${id}/branches?page=${page}`),
+  getPageLikes: (id: number) =>
+    request<import('../types').PageLikeInfo[]>(`/works/${id}/page-likes`),
+  likeWork: (id: number) =>
+    request<{ liked: boolean }>(`/works/${id}/like`, { method: 'POST' }),
+  likePage: (pageId: number) =>
+    request<{ liked: boolean }>(`/pages/${pageId}/like`, { method: 'POST' }),
 }
 
 export const commentsApi = {
@@ -134,7 +142,7 @@ export const tasksApi = {
     request<{ id: number; status: string; type: string; credits_used: number; created_at: string; completed_at: string | null; error: string | null }[]>('/ai/tasks'),
   getById: (id: number) =>
     request<any>(`/ai/tasks/${id}`),
-  publish: (id: number, data?: { title?: string; description?: string; cover_image?: string }) =>
+  publish: (id: number, data?: { title?: string; subtitle?: string; description?: string; cover_image?: string; allow_fork?: number }) =>
     request<{ id: number; message: string }>(`/ai/tasks/${id}/publish`, { method: 'POST', body: JSON.stringify(data || {}) }),
   cancel: (id: number) =>
     request<{ message: string }>(`/ai/tasks/${id}/cancel`, { method: 'POST' }),

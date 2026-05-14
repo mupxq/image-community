@@ -47,7 +47,14 @@ export default function WorkCard({ work, index, onClick }: { work: Work; index: 
         </div>
       )}
       <div className="p-3">
-        <div className="text-sm font-semibold truncate">{work.title}</div>
+        {work.subtitle && work.parent_work_id ? (
+          <div>
+            <div className="text-[10px] text-text-secondary truncate">{work.title.replace(`：${work.subtitle}`, '')}</div>
+            <div className="text-sm font-semibold truncate">{work.subtitle}</div>
+          </div>
+        ) : (
+          <div className="text-sm font-semibold truncate">{work.title}</div>
+        )}
         {work.description && (
           <div className="text-xs text-text-secondary mt-1 line-clamp-2">{work.description}</div>
         )}

@@ -162,7 +162,11 @@ router.get('/works/:id', (req: Request<{ id: string }>, res: Response) => {
     `).get(work.parent_work_id)
   }
 
-  res.json({ ...work, contributors, parentWork })
+  const likeCount = (db.prepare('SELECT COUNT(*) as c FROM work_likes WHERE work_id = ?').get(req.params.id) as { c: number }).c
+  const userId = (req as any).userId
+  const liked = userId ? !!(db.prepare('SELECT 1 FROM work_likes WHERE work_id = ? AND user_id = ?').get(req.params.id, userId)) : false
+
+  res.json({ ...work, contributors, parentWork, like_count: likeCount, liked })
 })
 
 router.get('/works/:id/pages', (req: Request<{ id: string }>, res: Response) => {
@@ -224,12 +228,13 @@ interface PageInput {
 }
 
 router.post('/works', requireAuth, (req: AuthRequest, res: Response) => {
-  const { title, description, type, pages, cover_image } = req.body as {
+  const { title, description, type, pages, cover_image, allow_fork } = req.body as {
     title: string
     description?: string
     type?: string
     pages?: PageInput[]
     cover_image?: string
+    allow_fork?: number
   }
   const creator_id = req.userId!
 
@@ -238,9 +243,9 @@ router.post('/works', requireAuth, (req: AuthRequest, res: Response) => {
   }
 
   const result = db.prepare(`
-    INSERT INTO works (title, description, type, creator_id, cover_image, status)
-    VALUES (?, ?, ?, ?, ?, 'published')
-  `).run(title, description || '', type || 'comic', creator_id, cover_image || '')
+    INSERT INTO works (title, description, type, creator_id, cover_image, allow_fork, status)
+    VALUES (?, ?, ?, ?, ?, ?, 'published')
+  `).run(title, description || '', type || 'comic', creator_id, cover_image || '', allow_fork ?? 1)
 
   const workId = Number(result.lastInsertRowid)
 
@@ -276,28 +281,55 @@ router.delete('/works/:id', requireAuth, (req: AuthRequest<{ id: string }>, res:
   res.json({ message: '作品已删除' })
 })
 
+// 查询某页的分支作品
+router.get('/works/:id/branches', (req: Request<{ id: string }, {}, {}, { page?: string }>, res: Response) => {
+  const page = Number(req.query.page)
+  if (!page || page < 1) return res.status(400).json({ error: 'page 参数必填且大于0' })
+
+  const branches = db.prepare(`
+    SELECT w.id, w.title, w.description, w.cover_image, w.type, w.created_at, w.fork_from_page,
+      u.nickname as creator_name, u.avatar as creator_avatar,
+      (SELECT COUNT(*) FROM work_pages wp WHERE wp.work_id = w.id) as page_count
+    FROM works w
+    JOIN users u ON w.creator_id = u.id
+    WHERE w.parent_work_id = ? AND w.fork_from_page = ? AND w.status = 'published'
+    ORDER BY w.created_at DESC
+  `).all(req.params.id, page)
+
+  res.json(branches)
+})
+
 router.post('/works/:id/fork', requireAuth, (req: AuthRequest<{ id: string }>, res: Response) => {
-  const parentWork = db.prepare('SELECT * FROM works WHERE id = ?').get(req.params.id) as WorkRow | undefined
+  const parentWork = db.prepare('SELECT * FROM works WHERE id = ?').get(req.params.id) as (WorkRow & { allow_fork?: number }) | undefined
   if (!parentWork) return res.status(404).json({ error: '原作品不存在' })
 
-  const { title, description, pages, cover_image } = req.body as {
-    title: string
+  // 验证是否允许共创
+  if (parentWork.allow_fork === 0) {
+    return res.status(403).json({ error: '该作品不允许共创' })
+  }
+
+  const { subtitle, description, pages, cover_image, fork_from_page } = req.body as {
+    subtitle: string
     description?: string
     pages?: PageInput[]
     cover_image?: string
+    fork_from_page?: number
   }
   const creator_id = req.userId!
 
-  if (!title) {
-    return res.status(400).json({ error: '标题必填' })
+  if (!subtitle) {
+    return res.status(400).json({ error: '副标题必填' })
   }
 
+  // fork 作品标题 = 父作品标题 + ：+ 副标题
+  const parentTitle = (parentWork as any).title as string
+  const title = `${parentTitle}：${subtitle}`
   const rootId = parentWork.root_work_id || parentWork.id
 
   const result = db.prepare(`
-    INSERT INTO works (title, description, type, creator_id, parent_work_id, root_work_id, cover_image, status)
-    VALUES (?, ?, ?, ?, ?, ?, ?, 'published')
-  `).run(title, description || '', parentWork.type, creator_id, parentWork.id, rootId, cover_image || '')
+    INSERT INTO works (title, subtitle, description, type, creator_id, parent_work_id, root_work_id, cover_image, fork_from_page, status)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'published')
+  `).run(title, subtitle, description || '', parentWork.type, creator_id, parentWork.id, rootId, cover_image || '', fork_from_page || null)
 
   const workId = Number(result.lastInsertRowid)
 
@@ -313,14 +345,88 @@ router.post('/works/:id/fork', requireAuth, (req: AuthRequest<{ id: string }>, r
     }
   }
 
+  // 复制父作品前 fork_from_page 页到新作品
+  let startPageNumber = 1
+  if (fork_from_page && fork_from_page > 0) {
+    const parentPages = db.prepare('SELECT * FROM work_pages WHERE work_id = ? AND page_number <= ? ORDER BY page_number ASC').all(parentWork.id, fork_from_page) as { page_number: number; image_url: string; description: string; dialogue: string; ai_generated: number }[]
+    const insertPage = db.prepare('INSERT INTO work_pages (work_id, page_number, image_url, description, dialogue, ai_generated) VALUES (?, ?, ?, ?, ?, ?)')
+    for (const p of parentPages) {
+      insertPage.run(workId, p.page_number, p.image_url, p.description, p.dialogue, p.ai_generated)
+    }
+    startPageNumber = fork_from_page + 1
+  }
+
   if (pages && pages.length > 0) {
     const insertPage = db.prepare('INSERT INTO work_pages (work_id, page_number, image_url, description, dialogue, ai_generated) VALUES (?, ?, ?, ?, ?, ?)')
     pages.forEach((page, index) => {
-      insertPage.run(workId, index + 1, page.image_url || '', page.description || '', page.dialogue || '', page.ai_generated ? 1 : 0)
+      insertPage.run(workId, startPageNumber + index, page.image_url || '', page.description || '', page.dialogue || '', page.ai_generated ? 1 : 0)
     })
   }
 
   res.json({ id: workId, message: '续写创建成功' })
+})
+
+// ============ 点亮/点赞 API ============
+
+// 点亮分页（toggle）
+router.post('/pages/:id/like', requireAuth, (req: AuthRequest<{ id: string }>, res: Response) => {
+  const pageId = Number(req.params.id)
+  const existing = db.prepare('SELECT id FROM page_likes WHERE page_id = ? AND user_id = ?').get(pageId, req.userId)
+  if (existing) {
+    db.prepare('DELETE FROM page_likes WHERE page_id = ? AND user_id = ?').run(pageId, req.userId)
+    res.json({ liked: false })
+  } else {
+    db.prepare('INSERT INTO page_likes (page_id, user_id) VALUES (?, ?)').run(pageId, req.userId)
+    res.json({ liked: true })
+  }
+})
+
+// 获取作品各页点亮状态
+router.get('/works/:id/page-likes', (req: Request<{ id: string }>, res: Response) => {
+  const userId = (req as any).userId
+  const pages = db.prepare('SELECT id, page_number FROM work_pages WHERE work_id = ? ORDER BY page_number ASC').all(req.params.id) as { id: number; page_number: number }[]
+
+  const result = pages.map(p => {
+    const count = (db.prepare('SELECT COUNT(*) as c FROM page_likes WHERE page_id = ?').get(p.id) as { c: number }).c
+    const liked = userId ? !!(db.prepare('SELECT 1 FROM page_likes WHERE page_id = ? AND user_id = ?').get(p.id, userId)) : false
+    return { page_id: p.id, page_number: p.page_number, like_count: count, liked }
+  })
+
+  res.json(result)
+})
+
+// 作品点赞（toggle）+ 通知所有贡献者
+router.post('/works/:id/like', requireAuth, (req: AuthRequest<{ id: string }>, res: Response) => {
+  const workId = Number(req.params.id)
+  const existing = db.prepare('SELECT id FROM work_likes WHERE work_id = ? AND user_id = ?').get(workId, req.userId)
+  if (existing) {
+    db.prepare('DELETE FROM work_likes WHERE work_id = ? AND user_id = ?').run(workId, req.userId)
+    res.json({ liked: false })
+  } else {
+    db.prepare('INSERT INTO work_likes (work_id, user_id) VALUES (?, ?)').run(workId, req.userId)
+
+    // 通知所有贡献者
+    const work = db.prepare('SELECT title FROM works WHERE id = ?').get(workId) as { title: string } | undefined
+    const contributors = db.prepare('SELECT DISTINCT user_id FROM contributors WHERE work_id = ?').all(workId) as { user_id: number }[]
+    const liker = db.prepare('SELECT nickname FROM users WHERE id = ?').get(req.userId) as { nickname: string }
+
+    for (const c of contributors) {
+      if (c.user_id === req.userId) continue
+      // 查找或创建系统通知会话
+      let conv = db.prepare(`SELECT c.id FROM conversations c JOIN conversation_members cm ON c.id = cm.conversation_id WHERE c.type = 'private' AND cm.user_id = ? AND c.id IN (SELECT conversation_id FROM conversation_members WHERE user_id = 0)`).get(c.user_id) as { id: number } | undefined
+      if (!conv) {
+        const convResult = db.prepare("INSERT INTO conversations (type, title) VALUES ('private', '系统通知')").run()
+        const convId = Number(convResult.lastInsertRowid)
+        db.prepare('INSERT OR IGNORE INTO conversation_members (conversation_id, user_id) VALUES (?, ?)').run(convId, c.user_id)
+        db.prepare('INSERT OR IGNORE INTO conversation_members (conversation_id, user_id) VALUES (?, ?)').run(convId, 0)
+        conv = { id: convId }
+      }
+      const msgContent = JSON.stringify({ type: 'like_notify', workId, workTitle: work?.title || '', likerName: liker.nickname })
+      db.prepare("INSERT INTO messages (conversation_id, sender_id, content, msg_type) VALUES (?, 0, ?, 'system')").run(conv.id, msgContent)
+    }
+
+    res.json({ liked: true })
+  }
 })
 
 // ============ 评论 API ============

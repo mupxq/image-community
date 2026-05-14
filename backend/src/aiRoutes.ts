@@ -49,8 +49,16 @@ router.post('/generate', requireAuth, async (req: AuthRequest, res: Response) =>
     return
   }
 
+  // fork 上下文（可选）
+  const { parentWorkId, forkFromPage } = req.body
+  let parentTitle = ''
+  if (parentWorkId) {
+    const pw = db.prepare('SELECT title FROM works WHERE id = ?').get(parentWorkId) as { title: string } | undefined
+    parentTitle = pw?.title || ''
+  }
+
   // 创建任务记录，立即返回
-  const inputParams = JSON.stringify({ synopsis, style, type, pageCount, textProvider, imageProvider })
+  const inputParams = JSON.stringify({ synopsis, style, type, pageCount, textProvider, imageProvider, parentWorkId: parentWorkId || undefined, forkFromPage: forkFromPage || undefined, parentTitle: parentTitle || undefined })
   const taskResult = db.prepare('INSERT INTO generation_tasks (user_id, type, input_params) VALUES (?, ?, ?)').run(req.userId, type, inputParams)
   const taskId = Number(taskResult.lastInsertRowid)
 
@@ -157,20 +165,69 @@ router.post('/tasks/:id/publish', requireAuth, (req: AuthRequest, res: Response)
   if (!task.result) { res.status(400).json({ error: '任务无生成结果' }); return }
 
   const result = JSON.parse(task.result)
-  const { title: customTitle, description: customDesc, cover_image } = req.body as { title?: string; description?: string; cover_image?: string }
-  const title = customTitle || result.title
+  const inputParams = task.input_params ? JSON.parse(task.input_params) : {}
+  const { title: customTitle, subtitle: customSubtitle, description: customDesc, cover_image, allow_fork } = req.body as { title?: string; subtitle?: string; description?: string; cover_image?: string; allow_fork?: number }
   const description = customDesc || result.hookDescription || result.description
 
+  // 检查是否为 fork 任务
+  const parentWorkId = inputParams.parentWorkId || null
+  const forkFromPage = inputParams.forkFromPage || null
+
+  let rootId: number | null = null
+  let title = ''
+  let subtitle = ''
+  if (parentWorkId) {
+    const parentWork = db.prepare('SELECT root_work_id, id, title FROM works WHERE id = ?').get(parentWorkId) as { root_work_id: number | null; id: number; title: string } | undefined
+    rootId = parentWork?.root_work_id || parentWork?.id || null
+    // fork 作品：标题 = 父标题：副标题
+    subtitle = customSubtitle || result.title || ''
+    title = `${parentWork?.title || ''}：${subtitle}`
+  } else {
+    title = customTitle || result.title
+  }
+
   // 创建作品
-  const workResult = db.prepare('INSERT INTO works (title, description, type, creator_id, cover_image, status) VALUES (?, ?, ?, ?, ?, ?)').run(title, description, task.type, req.userId, cover_image || '', 'published')
+  const workResult = db.prepare('INSERT INTO works (title, subtitle, description, type, creator_id, cover_image, allow_fork, parent_work_id, root_work_id, fork_from_page, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(
+    title, subtitle, description, task.type, req.userId, cover_image || '', allow_fork ?? 1,
+    parentWorkId, rootId, forkFromPage, 'published'
+  )
   const workId = Number(workResult.lastInsertRowid)
-  db.prepare('UPDATE works SET root_work_id = ? WHERE id = ?').run(workId, workId)
+
+  // 如果不是 fork，root 指向自身
+  if (!parentWorkId) {
+    db.prepare('UPDATE works SET root_work_id = ? WHERE id = ?').run(workId, workId)
+  }
+
   db.prepare('INSERT INTO contributors (work_id, user_id, role) VALUES (?, ?, ?)').run(workId, req.userId, 'creator')
 
-  // 插入页面
-  for (const page of result.pages) {
-    db.prepare('INSERT INTO work_pages (work_id, page_number, image_url, description, dialogue, ai_generated) VALUES (?, ?, ?, ?, ?, ?)').run(workId, page.pageNumber, page.image_url || '', page.description, page.dialogue, 1)
+  // fork 时继承上游贡献者
+  if (parentWorkId) {
+    const ancestorContributors = db.prepare('SELECT DISTINCT user_id FROM contributors WHERE work_id = ?').all(parentWorkId) as { user_id: number }[]
+    for (const c of ancestorContributors) {
+      if (c.user_id !== req.userId) {
+        db.prepare('INSERT OR IGNORE INTO contributors (work_id, user_id, role) VALUES (?, ?, ?)').run(workId, c.user_id, 'ancestor')
+      }
+    }
   }
+
+  // 复制父作品前 forkFromPage 页
+  let startPageNumber = 1
+  if (parentWorkId && forkFromPage && forkFromPage > 0) {
+    const parentPages = db.prepare('SELECT * FROM work_pages WHERE work_id = ? AND page_number <= ? ORDER BY page_number ASC').all(parentWorkId, forkFromPage) as { page_number: number; image_url: string; description: string; dialogue: string; ai_generated: number }[]
+    for (const p of parentPages) {
+      db.prepare('INSERT INTO work_pages (work_id, page_number, image_url, description, dialogue, ai_generated) VALUES (?, ?, ?, ?, ?, ?)').run(workId, p.page_number, p.image_url, p.description, p.dialogue, p.ai_generated)
+    }
+    startPageNumber = forkFromPage + 1
+  }
+
+  // 插入 AI 生成的页面
+  for (let i = 0; i < result.pages.length; i++) {
+    const page = result.pages[i]
+    db.prepare('INSERT INTO work_pages (work_id, page_number, image_url, description, dialogue, ai_generated) VALUES (?, ?, ?, ?, ?, ?)').run(workId, startPageNumber + i, page.image_url || '', page.description, page.dialogue, 1)
+  }
+
+  // 发布后从任务列表移除
+  db.prepare('DELETE FROM generation_tasks WHERE id = ?').run(task.id)
 
   res.json({ id: workId, message: '作品已发布' })
 })
@@ -453,7 +510,7 @@ router.put('/config', requireAuth, (req: AuthRequest, res: Response) => {
 
 // 使用用户自定义 API 生成（不消耗积分，异步模式）
 router.post('/generate-custom', requireAuth, async (req: AuthRequest, res: Response) => {
-  const { synopsis, style, type, pageCount, textConfig, imageConfig } = req.body
+  const { synopsis, style, type, pageCount, textConfig, imageConfig, parentWorkId, forkFromPage } = req.body
 
   console.log(`[generate-custom] user=${req.userId}, type=${type}, textConfig.baseUrl=${textConfig?.baseUrl}, model=${textConfig?.model}, keyLength=${textConfig?.apiKey?.length}`)
 
@@ -470,8 +527,14 @@ router.post('/generate-custom', requireAuth, async (req: AuthRequest, res: Respo
     return
   }
 
+  let parentTitle = ''
+  if (parentWorkId) {
+    const pw = db.prepare('SELECT title FROM works WHERE id = ?').get(parentWorkId) as { title: string } | undefined
+    parentTitle = pw?.title || ''
+  }
+
   // 创建任务记录，立即返回
-  const inputParams = JSON.stringify({ synopsis, style, type, pageCount, textConfig: { baseUrl: textConfig.baseUrl, model: textConfig.model }, imageConfig: imageConfig ? { baseUrl: imageConfig.baseUrl, model: imageConfig.model } : null })
+  const inputParams = JSON.stringify({ synopsis, style, type, pageCount, textConfig: { baseUrl: textConfig.baseUrl, model: textConfig.model }, imageConfig: imageConfig ? { baseUrl: imageConfig.baseUrl, model: imageConfig.model } : null, parentWorkId: parentWorkId || undefined, forkFromPage: forkFromPage || undefined, parentTitle: parentTitle || undefined })
   const taskResult = db.prepare('INSERT INTO generation_tasks (user_id, type, input_params) VALUES (?, ?, ?)').run(req.userId, type, inputParams)
   const taskId = Number(taskResult.lastInsertRowid)
 

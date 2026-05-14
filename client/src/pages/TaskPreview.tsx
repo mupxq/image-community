@@ -9,11 +9,13 @@ export default function TaskPreview() {
   const navigate = useNavigate()
   const [task, setTask] = useState<any>(null)
   const [title, setTitle] = useState('')
+  const [subtitle, setSubtitle] = useState('')
   const [desc, setDesc] = useState('')
   const [coverImage, setCoverImage] = useState('')
   const [coverLoading, setCoverLoading] = useState(false)
   const [publishing, setPublishing] = useState(false)
   const [cancelling, setCancelling] = useState(false)
+  const [allowFork, setAllowFork] = useState(true)
   const coverInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -22,6 +24,7 @@ export default function TaskPreview() {
       setTask(t)
       if (t.result) {
         setTitle(t.result.title || '')
+        setSubtitle(t.result.title || '')
         setDesc(t.result.hookDescription || t.result.description || '')
       }
     })
@@ -44,7 +47,7 @@ export default function TaskPreview() {
         // fallback: 使用平台默认图片 provider
         const providers = await aiApi.getProviders()
         if (providers.imageProviders.length > 0) {
-          data.provider = providers.imageProviders[0].id
+          data.provider = providers.imageProviders[0]!.id
         }
       }
       const res = await aiApi.generateCover(data)
@@ -69,9 +72,19 @@ export default function TaskPreview() {
 
   const handlePublish = async () => {
     if (!id) return
+    if (!coverImage) {
+      if (!confirm('生成或上传封面图可以更好地吸引读者，确定不添加封面直接发布吗？')) return
+    }
     setPublishing(true)
     try {
-      const res = await tasksApi.publish(Number(id), { title, description: desc, cover_image: coverImage || undefined })
+      const isFork = !!task?.input_params?.parentWorkId
+      const res = await tasksApi.publish(Number(id), {
+        title: isFork ? undefined : title,
+        subtitle: isFork ? subtitle : undefined,
+        description: desc,
+        cover_image: coverImage || undefined,
+        allow_fork: allowFork ? 1 : 0,
+      })
       navigate(`/work/${res.id}`)
     } catch (err: any) {
       alert(err.message || '发布失败')
@@ -214,10 +227,20 @@ export default function TaskPreview() {
           )}
         </div>
 
-        <div>
-          <label className="text-xs text-text-secondary">作品标题</label>
-          <input className="w-full mt-1 bg-bg-card border border-border rounded-lg px-3 py-2 text-sm text-text focus:outline-none focus:border-primary" value={title} onChange={(e) => setTitle(e.target.value)} />
-        </div>
+        {task?.input_params?.parentWorkId ? (
+          <div>
+            <label className="text-xs text-text-secondary">副标题（主标题继承自父作品）</label>
+            <div className="flex items-center gap-0 mt-1">
+              <span className="shrink-0 bg-bg-secondary border border-border border-r-0 rounded-l-lg px-3 py-2 text-sm text-text-secondary truncate max-w-[40%]">{task.input_params.parentTitle || ''}：</span>
+              <input className="flex-1 bg-bg-card border border-border rounded-r-lg px-3 py-2 text-sm text-text focus:outline-none focus:border-primary" value={subtitle} onChange={(e) => setSubtitle(e.target.value)} placeholder="你的故事线名称" />
+            </div>
+          </div>
+        ) : (
+          <div>
+            <label className="text-xs text-text-secondary">作品标题</label>
+            <input className="w-full mt-1 bg-bg-card border border-border rounded-lg px-3 py-2 text-sm text-text focus:outline-none focus:border-primary" value={title} onChange={(e) => setTitle(e.target.value)} />
+          </div>
+        )}
         <div>
           <label className="text-xs text-text-secondary">作品简介（展示给读者的推荐语）</label>
           <textarea className="w-full mt-1 bg-bg-card border border-border rounded-lg px-3 py-2 text-sm text-text focus:outline-none focus:border-primary resize-none" rows={3} value={desc} onChange={(e) => setDesc(e.target.value)} />
@@ -254,8 +277,21 @@ export default function TaskPreview() {
           </div>
         </div>
 
-        <button onClick={handlePublish} disabled={publishing} className="w-full py-3 bg-primary rounded-lg text-sm text-white font-medium hover:bg-primary-light transition-colors disabled:opacity-50">
-          {publishing ? '发布中...' : '确认发布'}
+        <div className="flex items-center justify-between bg-bg-card border border-border rounded-lg px-3 py-2.5">
+          <div>
+            <div className="text-sm">允许共创</div>
+            <div className="text-[10px] text-text-secondary">其他用户可以从任意分页分叉续写</div>
+          </div>
+          <button
+            onClick={() => setAllowFork(!allowFork)}
+            className={`w-10 h-5.5 rounded-full transition-colors relative ${allowFork ? 'bg-primary' : 'bg-border'}`}
+          >
+            <div className={`absolute top-0.5 w-4.5 h-4.5 bg-white rounded-full shadow transition-transform ${allowFork ? 'translate-x-5' : 'translate-x-0.5'}`} />
+          </button>
+        </div>
+
+        <button onClick={handlePublish} disabled={publishing || coverLoading} className="w-full py-3 bg-primary rounded-lg text-sm text-white font-medium hover:bg-primary-light transition-colors disabled:opacity-50">
+          {publishing ? '发布中...' : coverLoading ? '封面生成中，请稍候...' : '确认发布'}
         </button>
         <div className="flex gap-2">
           <button onClick={handleRegenerate} className="flex-1 py-2.5 bg-bg-card border border-border rounded-lg text-sm text-text-secondary hover:border-primary transition-colors">
