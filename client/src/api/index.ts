@@ -10,7 +10,6 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
   if (token) {
     headers['Authorization'] = `Bearer ${token}`
   }
-  // 只在有 body 时设置 Content-Type，避免 body-less POST 触发不必要的 CORS preflight
   if (options?.body) {
     headers['Content-Type'] = 'application/json'
   }
@@ -40,10 +39,9 @@ export const authApi = {
 }
 
 export const usersApi = {
-  getAll: () => request<import('../types').User[]>('/users'),
-  getById: (id: number) => request<import('../types').User>(`/users/${id}`),
-  getWorks: (id: number) => request<import('../types').Work[]>(`/users/${id}/works`),
-  getContributions: (id: number) => request<import('../types').Work[]>(`/users/${id}/contributions`),
+  getById: (id: string) => request<import('../types').User>(`/users/${id}`),
+  getWorks: (id: string) => request<import('../types').Work[]>(`/users/${id}/works`),
+  getContributions: (id: string) => request<import('../types').Work[]>(`/users/${id}/contributions`),
   uploadAvatar: async (file: File): Promise<{ avatar: string }> => {
     const formData = new FormData()
     formData.append('avatar', file)
@@ -67,55 +65,55 @@ export const worksApi = {
     const query = qs.toString()
     return request<import('../types').Work[]>(`/works${query ? '?' + query : ''}`)
   },
-  getById: (id: number) => request<import('../types').WorkDetail>(`/works/${id}`),
-  getPages: (id: number) => request<import('../types').WorkPage[]>(`/works/${id}/pages`),
-  getTree: (id: number) => request<import('../types').ChapterTreeData>(`/works/${id}/tree`),
+  getById: (id: string) => request<import('../types').WorkDetail>(`/works/${id}`),
+  getPages: (id: string) => request<import('../types').WorkPage[]>(`/works/${id}/pages`),
+  getTree: (id: string) => request<import('../types').ChapterTreeData>(`/works/${id}/tree`),
   create: (data: { title: string; description: string; type: string; pages?: import('../types').PageInput[]; cover_image?: string; allow_fork?: number }) =>
-    request<{ id: number; message: string }>('/works', { method: 'POST', body: JSON.stringify(data) }),
-  fork: (parentId: number, data: { subtitle: string; description?: string; pages?: import('../types').PageInput[]; cover_image?: string; fork_from_page?: number }) =>
-    request<{ id: number; message: string }>(`/works/${parentId}/fork`, { method: 'POST', body: JSON.stringify(data) }),
-  delete: (id: number) =>
+    request<{ id: string; message: string }>('/works', { method: 'POST', body: JSON.stringify(data) }),
+  fork: (parentId: string, data: { subtitle: string; description?: string; pages?: import('../types').PageInput[]; cover_image?: string; fork_from_page?: number }) =>
+    request<{ id: string; message: string }>(`/works/${parentId}/fork`, { method: 'POST', body: JSON.stringify(data) }),
+  delete: (id: string) =>
     request<{ message: string }>(`/works/${id}`, { method: 'DELETE' }),
-  getBranches: (id: number, page: number) =>
+  getBranches: (id: string, page: number) =>
     request<import('../types').BranchWork[]>(`/works/${id}/branches?page=${page}`),
-  getPageLikes: (id: number) =>
+  getPageLikes: (id: string) =>
     request<import('../types').PageLikeInfo[]>(`/works/${id}/page-likes`),
-  likeWork: (id: number) =>
+  likeWork: (id: string) =>
     request<{ liked: boolean }>(`/works/${id}/like`, { method: 'POST' }),
-  likePage: (pageId: number) =>
+  likePage: (pageId: string) =>
     request<{ liked: boolean }>(`/pages/${pageId}/like`, { method: 'POST' }),
 }
 
 export const commentsApi = {
-  list: (workId: number) => request<import('../types').Comment[]>(`/works/${workId}/comments`),
-  create: (workId: number, data: { content: string; parent_id?: number }) =>
+  list: (workId: string) => request<import('../types').Comment[]>(`/works/${workId}/comments`),
+  create: (workId: string, data: { content: string; parent_id?: string }) =>
     request<{ message: string }>(`/works/${workId}/comments`, { method: 'POST', body: JSON.stringify(data) }),
-  delete: (id: number) =>
+  delete: (id: string) =>
     request<{ message: string }>(`/comments/${id}`, { method: 'DELETE' }),
 }
 
 export const bookmarksApi = {
-  list: (userId: number, status?: string) => {
+  list: (status?: string) => {
     const qs = status && status !== 'all' ? `?status=${status}` : ''
-    return request<import('../types').Bookmark[]>(`/users/${userId}/bookmarks${qs}`)
+    return request<import('../types').Bookmark[]>(`/bookmarks${qs}`)
   },
-  create: (data: { work_id: number }) =>
+  create: (data: { work_id: string }) =>
     request<{ message: string }>('/bookmarks', { method: 'POST', body: JSON.stringify(data) }),
-  update: (id: number, data: { read_status?: string; last_read_page?: number }) =>
-    request<{ message: string }>(`/bookmarks/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
-  remove: (id: number) =>
-    request<{ message: string }>(`/bookmarks/${id}`, { method: 'DELETE' }),
-  check: (workId: number) =>
+  update: (workId: string, data: { read_status?: string; last_read_page?: number }) =>
+    request<{ message: string }>(`/bookmarks/${workId}`, { method: 'PUT', body: JSON.stringify(data) }),
+  remove: (workId: string) =>
+    request<{ message: string }>(`/bookmarks/${workId}`, { method: 'DELETE' }),
+  check: (workId: string) =>
     request<{ bookmarked: boolean; bookmark: import('../types').Bookmark | null }>(`/bookmarks/check?work_id=${workId}`),
 }
 
 export const conversationsApi = {
-  list: (userId: number) => request<import('../types').Conversation[]>(`/users/${userId}/conversations`),
-  create: (targetUserId: number) =>
-    request<{ conversation_id: number; created: boolean }>('/conversations', { method: 'POST', body: JSON.stringify({ target_user_id: targetUserId }) }),
-  getMessages: (convId: number) =>
+  list: () => request<import('../types').Conversation[]>('/conversations'),
+  create: (targetUserId: string) =>
+    request<{ conversation_id: string; created: boolean }>('/conversations', { method: 'POST', body: JSON.stringify({ target_user_id: targetUserId }) }),
+  getMessages: (convId: string) =>
     request<{ conversation: import('../types').Conversation; members: import('../types').User[]; messages: import('../types').Message[] }>(`/conversations/${convId}/messages`),
-  sendMessage: (convId: number, data: { content: string; msg_type?: string }) =>
+  sendMessage: (convId: string, data: { content: string; msg_type?: string }) =>
     request<{ message: string }>(`/conversations/${convId}/messages`, { method: 'POST', body: JSON.stringify(data) }),
 }
 
@@ -142,49 +140,49 @@ export const creditsApi = {
   checkIn: () =>
     request<{ creditsEarned: number; streak: number; totalCredits: number; message: string }>('/credits/check-in', { method: 'POST' }),
   logs: () =>
-    request<{ id: number; amount: number; type: string; description: string; task_id: number | null; created_at: string }[]>('/credits/logs'),
+    request<{ id: string; amount: number; type: string; description: string; task_id: string | null; created_at: string }[]>('/credits/logs'),
 }
 
 export const tasksApi = {
   list: () =>
-    request<{ id: number; status: string; type: string; credits_used: number; created_at: string; completed_at: string | null; error: string | null }[]>('/ai/tasks'),
-  getById: (id: number) =>
+    request<{ id: string; status: string; type: string; credits_used: number; created_at: string; completed_at: string | null; error: string | null }[]>('/ai/tasks'),
+  getById: (id: string) =>
     request<any>(`/ai/tasks/${id}`),
-  publish: (id: number, data?: { title?: string; subtitle?: string; description?: string; cover_image?: string; allow_fork?: number }) =>
-    request<{ id: number; message: string }>(`/ai/tasks/${id}/publish`, { method: 'POST', body: JSON.stringify(data || {}) }),
-  cancel: (id: number) =>
+  publish: (id: string, data?: { title?: string; subtitle?: string; description?: string; cover_image?: string; allow_fork?: number }) =>
+    request<{ id: string; message: string }>(`/ai/tasks/${id}/publish`, { method: 'POST', body: JSON.stringify(data || {}) }),
+  cancel: (id: string) =>
     request<{ message: string }>(`/ai/tasks/${id}/cancel`, { method: 'POST' }),
-  delete: (id: number) =>
+  delete: (id: string) =>
     request<{ message: string }>(`/ai/tasks/${id}`, { method: 'DELETE' }),
-  regenerate: (id: number) =>
-    request<{ taskId: number; message: string }>(`/ai/tasks/${id}/regenerate`, { method: 'POST' }),
+  regenerate: (id: string) =>
+    request<{ taskId: string; message: string }>(`/ai/tasks/${id}/regenerate`, { method: 'POST' }),
 }
 
 export const followsApi = {
-  follow: (userId: number) =>
+  follow: (userId: string) =>
     request<{ message: string }>(`/users/${userId}/follow`, { method: 'POST' }),
-  unfollow: (userId: number) =>
+  unfollow: (userId: string) =>
     request<{ message: string }>(`/users/${userId}/follow`, { method: 'DELETE' }),
-  status: (userId: number) =>
+  status: (userId: string) =>
     request<{ isFollowing: boolean; isFollowedBy: boolean; isMutual: boolean }>(`/users/${userId}/follow-status`),
-  followers: (userId: number) =>
+  followers: (userId: string) =>
     request<import('../types').User[]>(`/users/${userId}/followers`),
-  following: (userId: number) =>
+  following: (userId: string) =>
     request<import('../types').User[]>(`/users/${userId}/following`),
   mutualFollowers: () =>
-    request<{ id: number; nickname: string; avatar: string; username: string }[]>('/users/me/mutual-followers'),
+    request<{ id: string; nickname: string; avatar: string; username: string }[]>('/users/me/mutual-followers'),
 }
 
 export const subscriptionsApi = {
-  list: (userId: number) =>
+  list: (userId: string) =>
     request<import('../types').Subscription[]>(`/users/${userId}/subscriptions`),
-  subscribe: (workId: number) =>
+  subscribe: (workId: string) =>
     request<{ message: string }>('/subscriptions', { method: 'POST', body: JSON.stringify({ work_id: workId }) }),
-  unsubscribe: (workId: number) =>
+  unsubscribe: (workId: string) =>
     request<{ message: string }>(`/subscriptions/${workId}`, { method: 'DELETE' }),
-  check: (workId: number) =>
+  check: (workId: string) =>
     request<{ subscribed: boolean; last_viewed_fork_count: number }>(`/subscriptions/check?work_id=${workId}`),
-  markViewed: (workId: number) =>
+  markViewed: (workId: string) =>
     request<{ message: string }>(`/subscriptions/${workId}/viewed`, { method: 'PUT' }),
 }
 

@@ -9,8 +9,23 @@ CoCoNut — AI-powered collaborative creation community platform. Users create w
 ## Commands
 
 ```bash
-# Backend (Express on port 3000, runs via tsx — no compile step)
+# Backend (Express 5 on port 3000, runs via tsx — no compile step)
 cd backend && npm start
+
+# Run tests (Vitest, requires Docker PostgreSQL running)
+cd backend && npm test
+
+# Run single test file
+cd backend && npx vitest run src/test/modules/users.repository.test.ts
+
+# Lint & format
+cd backend && npm run lint
+cd backend && npm run format
+
+# Database migrations
+cd backend && npm run db:generate   # Generate migration from schema changes
+cd backend && npm run db:migrate    # Apply migrations
+cd backend && npm run db:push       # Push schema directly (dev only)
 
 # Frontend (Vite dev server on port 5173, proxies /api and /uploads to backend)
 cd client && npm run dev
@@ -22,45 +37,59 @@ cd client && npm run build
 pm2 start ecosystem.config.js
 ```
 
-No test framework or linter configured for backend. Frontend has `npm run lint` (ESLint).
-
 ## Architecture
 
 Two independent projects at repo root:
 
 ```
 image-community/
-├── backend/               # Express 5 + SQLite API server (TypeScript)
+├── backend/               # Express 5 + PostgreSQL (Drizzle ORM, TypeScript)
 │   ├── src/
-│   │   ├── index.ts       # Express entry, middleware, static serving, backup scheduling
-│   │   ├── routes.ts      # Core API routes (works, users, comments, bookmarks, etc.)
-│   │   ├── authRoutes.ts  # Auth endpoints (register, login, /auth/me)
-│   │   ├── aiRoutes.ts    # AI generation, task management, config
-│   │   ├── uploadRoutes.ts# Image upload (multer, 10MB limit)
-│   │   ├── creditsRoutes.ts # Credits system, daily check-in
-│   │   ├── database.ts    # SQLite schema (17 tables, WAL mode, migration system)
-│   │   ├── seed.ts        # Demo data (5 users password 123456, 7 works)
-│   │   └── ai/            # AI provider system (pluggable architecture)
-│   │       ├── index.ts       # AI system entry
-│   │       ├── provider.ts    # Base provider interface
-│   │       ├── registry.ts    # Provider registry
-│   │       ├── prompts.ts     # Prompt engineering
-│   │       ├── storage.ts     # Image storage handling
-│   │       ├── mock.ts        # Mock provider
-│   │       ├── openai.ts      # OpenAI integration
-│   │       └── volcengine.ts  # Volcengine/Doubao integration
-│   ├── public/uploads/    # Uploaded images
-│   └── data.db            # SQLite database
+│   │   ├── index.ts       # Express entry, DI wiring, middleware, static serving
+│   │   ├── config.ts      # Centralized env vars (DATABASE_URL, JWT_SECRET, etc.)
+│   │   ├── seed.ts        # Demo data (5 users, 7 works with creation trees)
+│   │   ├── db/            # Database layer
+│   │   │   ├── schema.ts  # Drizzle schema (17 tables, 9 enums, UUID PKs)
+│   │   │   ├── client.ts  # Drizzle + pg Pool (auto-selects test DB)
+│   │   │   └── migrations/
+│   │   ├── middleware/     # Express middleware
+│   │   │   ├── auth.ts    # JWT auth (requireAuth, optionalAuth, generateToken)
+│   │   │   ├── validate.ts # Zod schema validation
+│   │   │   ├── errorHandler.ts # Global error handler (AppError subclasses)
+│   │   │   └── serialize.ts   # camelCase → snake_case response serializer
+│   │   ├── shared/
+│   │   │   └── errors.ts  # AppError hierarchy (NotFound, Forbidden, etc.)
+│   │   ├── modules/       # Feature modules (Route → Service → Repository)
+│   │   │   ├── auth/      # Registration, login, JWT token management
+│   │   │   ├── users/     # User profiles, avatar upload
+│   │   │   ├── works/     # Works CRUD, fork, tree, pages, contributors
+│   │   │   ├── social/    # Follows, comments, likes, subscriptions (unified)
+│   │   │   ├── bookmarks/ # Reading list management
+│   │   │   ├── messaging/ # Conversations, messages, system notifications
+│   │   │   ├── credits/   # Daily check-in, credit tracking
+│   │   │   ├── ai/        # AI generation, task management, config
+│   │   │   └── ...        # follows/, comments/, likes/, subscriptions/ (repos)
+│   │   ├── ai/            # AI provider system (pluggable, DB-independent)
+│   │   │   ├── providers/ # mock, openai, volcengine
+│   │   │   ├── registry.ts # Provider registry
+│   │   │   ├── prompts.ts # Prompt engineering
+│   │   │   └── storage.ts # Image download & save
+│   │   └── test/          # All test files (Vitest + Supertest)
+│   │       ├── setup.ts   # createTestDb helper (coconut_test DB)
+│   │       └── modules/   # Per-module test files
+│   ├── drizzle.config.ts  # Drizzle Kit config
+│   └── vitest.config.ts   # fileParallelism: false (shared test DB)
 ├── client/                # React 19 + TypeScript (Vite + Tailwind CSS v4)
 │   ├── src/
-│   │   ├── api/index.ts   # All backend API calls (12 modules)
+│   │   ├── api/index.ts   # All backend API calls (12 modules, string UUID IDs)
 │   │   ├── contexts/      # UserContext (JWT auth state)
 │   │   ├── components/    # Reusable UI (12 components)
 │   │   ├── pages/         # 14 page components
-│   │   ├── types.ts       # Shared TypeScript interfaces
+│   │   ├── types.ts       # Shared TypeScript interfaces (string IDs)
 │   │   ├── App.tsx        # HashRouter routes
 │   │   └── index.css      # Tailwind v4 + custom dark theme
 │   └── vite.config.js     # Proxy /api and /uploads to backend
+├── docker-compose.yml     # PostgreSQL 16 Alpine
 ├── ecosystem.config.js    # PM2 production config
 ├── PRODUCT.md             # Product requirements doc (Chinese)
 └── STACK.md               # Full technology stack and dependency analysis
@@ -68,26 +97,40 @@ image-community/
 
 Backend runs via `tsx` (no pre-compile). Frontend uses Vite with HMR. State management: React Context + Hooks. Routing: HashRouter.
 
+## Layered Architecture
+
+Each module follows **Route → Service → Repository** pattern with dependency injection:
+
+```
+Route (Express handler, validation, auth)
+  → Service (business logic, error handling)
+    → Repository (Drizzle ORM queries)
+```
+
+Routes are created via factory functions: `createWorksRouter(worksService)`. Services are injected into Express in `index.ts`.
+
 ## Authentication
 
 JWT-based auth. Backend middleware: `requireAuth` (protected routes), `optionalAuth` (works with/without auth). Frontend stores token in localStorage, sends via `Authorization: Bearer <token>`. API 401 responses trigger automatic logout and redirect to login.
 
 ## Database
 
-SQLite via better-sqlite3 (synchronous, prepared statements, WAL mode). 17 tables:
+PostgreSQL 16 via Docker + Drizzle ORM. UUID v4 primary keys. 17 tables, 9 enums:
 
-- **Core:** `users`, `works`, `work_pages`, `contributors`, `comments` (with nested replies via `parent_id`)
+- **Core:** `users`, `works`, `work_pages`, `contributors`, `comments`
 - **Social:** `follows`, `work_likes`, `page_likes`, `subscriptions`
-- **Reading:** `bookmarks` (status: `want_read`/`reading`/`finished` with progress tracking)
-- **Messaging:** `conversations`, `conversation_members`, `messages` (supports text/image/work_share/system types)
-- **AI:** `user_ai_configs`, `generation_tasks` (async task queue with status tracking), `credit_logs`, `check_ins`
+- **Reading:** `bookmarks`, `check_ins`, `credit_logs`
+- **Messaging:** `conversations`, `conversation_members`, `messages`
+- **AI:** `user_ai_configs`, `generation_tasks`
 
 **Key relationships:**
 - Works form a tree via `parent_work_id`/`root_work_id` (forking/continuation model)
 - Contributors track direct creators AND ancestor chain (inherited on fork)
-- System notifications sent via special conversations (`sender_id = 0`) with JSON-structured content
+- System notifications use conversation_type `system` with sender_id NULL
 
-**Migration:** Schema changes applied via ALTER TABLE checks on startup. Reset data: delete `backend/data.db` and restart.
+**Testing:** Tests use `coconut_test` database. `fileParallelism: false` in Vitest config because all tests share the same test DB. `beforeAll` cleanup ensures test isolation.
+
+**Response serialization:** Backend uses camelCase internally (Drizzle), but a middleware auto-converts responses to snake_case for frontend compatibility.
 
 ## AI System
 
@@ -97,33 +140,110 @@ Pluggable provider architecture. Each provider implements a common interface for
 
 Generation is async — creates a `generation_task` with status tracking (`generating` → `completed`/`failed`/`cancelled`). Supports task regeneration, single-page regeneration, and cover generation.
 
-## API Structure
+## TDD Development Workflow
 
-All endpoints prefixed with `/api`:
+All backend code **must** follow TDD (Test-Driven Development). No exceptions.
 
-| Group | Prefix | Key Operations |
-|-------|--------|----------------|
-| Auth | `/auth` | register, login, me |
-| Users | `/users` | CRUD, avatar upload, follow/unfollow, followers/following |
-| Works | `/works` | CRUD, filtering (type/sort), fork, tree, pages, like, branches |
-| Pages | `/pages` | like/unlike |
-| Comments | `/works/:id/comments`, `/comments/:id` | CRUD with replies and @mentions |
-| Bookmarks | `/bookmarks`, `/users/:id/bookmarks` | CRUD, status/progress, check |
-| Subscriptions | `/subscriptions` | subscribe/unsubscribe, mark viewed |
-| Conversations | `/conversations` | create, list, messages |
-| AI | `/ai` | generate, providers, tasks CRUD, config, cover/page generation |
-| Credits | `/credits` | status, check-in, logs |
-| Upload | `/upload` | image upload |
+### Red-Green-Refactor Cycle
 
-## Frontend Design System
+1. **Red** — Write a failing test first. Run it, confirm it fails.
+2. **Green** — Write the minimal code to make the test pass. Nothing more.
+3. **Refactor** — Clean up while keeping tests green.
 
-Dark theme with Tailwind CSS v4. Custom colors defined in `index.css`:
-- Primary: `#6C5CE7` (purple), Accent: `#00D2FF` (cyan) and `#FF6B9D` (pink)
-- Background: `#0F0F1A`, Card: `#1A1A2E`, Border: `#2A2A3E`
-- Mobile-first layout: max-width 430px centered. Desktop: full-width with 200px sidebar.
+### Test Structure & Conventions
+
+```
+src/test/
+├── setup.ts                    # createTestDb() — shared test DB helper
+├── infrastructure.test.ts      # Error classes, shared utilities
+└── modules/
+    ├── users.repository.test.ts
+    ├── auth.service.test.ts
+    ├── auth.routes.test.ts
+    └── ...
+```
+
+- **Test location:** All tests live under `src/test/`, never colocated with source.
+- **Test file naming:** `<module>.<repository|service|routes>.test.ts`
+- **Test DB:** Uses `coconut_test` database (separate from dev `coconut_dev`). Docker must be running.
+- **Parallelism:** `fileParallelism: false` in `vitest.config.ts` — all tests share the same DB instance.
+
+### Test Isolation Rules
+
+Every test file must:
+
+```typescript
+// 1. Create test DB in beforeAll
+beforeAll(async () => {
+  testDb = await createTestDb()
+  await testDb.cleanup()  // Clean leftover data from previous files
+  // ... set up repos/services
+})
+
+// 2. Clean relevant tables in beforeEach (NOT beforeAll)
+beforeEach(async () => {
+  await testDb.db.delete(someTable)
+  await testDb.db.delete(anotherTable)
+})
+
+// 3. Close pool in afterAll
+afterAll(async () => { await testDb.teardown() })
+```
+
+**Why `beforeAll` cleanup + `beforeEach` isolation:** Previous test files only call `teardown()` in `afterAll` (closes pool) without cleanup. The NEXT file's `beforeAll` must clean up stale data.
+
+### Testing by Layer
+
+**Repository tests** — Test raw DB operations directly:
+```typescript
+it('should create and retrieve', async () => {
+  const created = await repo.create({ ... })
+  const found = await repo.findById(created.id)
+  expect(found).toBeTruthy()
+})
+```
+
+**Service tests** — Test business logic with real repos (integration, not mocks):
+```typescript
+it('should reject duplicate check-in', async () => {
+  await service.checkIn(userId)
+  await expect(service.checkIn(userId)).rejects.toThrow('今日已签到')
+})
+```
+
+**Route tests** — Test HTTP layer via Supertest, full middleware stack:
+```typescript
+const app = express()
+app.use(express.json())
+app.use('/api', createAuthRouter(authService))
+const res = await request(app).post('/api/auth/register').send({ ... })
+expect(res.status).toBe(201)
+```
+
+### Adding a New Feature
+
+Follow this exact order:
+
+1. Add schema to `src/db/schema.ts` if new tables needed → `npm run db:generate && npm run db:migrate`
+2. Write **repository tests** → implement repository
+3. Write **service tests** → implement service
+4. Write **route tests** → implement routes
+5. Wire into `src/index.ts` (DI)
+6. Run `npm test` — all tests must pass
+
+### Key Rules
+
+- **Never skip tests.** If a feature doesn't have tests, it doesn't exist.
+- **No mocks for repositories.** Use the real test database. Mock/prod divergence is unacceptable.
+- **Test error paths too.** NotFound, Forbidden, Validation, Conflict — every error branch needs a test.
+- **One assertion per concept.** Multiple `expect()` in one test is fine, but test one behavior at a time.
+- **Run `npm test` before declaring work done.** All 179+ tests must pass.
 
 ## Naming Conventions
 
-- **Database:** snake_case (`parent_work_id`, `created_at`)
-- **Frontend:** camelCase variables, PascalCase components
+- **Database columns:** snake_case (`parent_work_id`, `created_at`)
+- **Drizzle schema:** camelCase JS properties (`parentWorkId`, `createdAt`)
+- **Frontend API responses:** snake_case (auto-serialized from camelCase)
+- **Frontend variables:** camelCase, PascalCase components
 - **TypeScript interfaces:** PascalCase (`WorkDetail`, `AuthUser`)
+- **All IDs:** string UUID (not number)

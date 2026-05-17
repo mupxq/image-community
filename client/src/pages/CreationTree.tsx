@@ -207,7 +207,7 @@ export default function CreationTree() {
 
   useEffect(() => {
     if (!id) return
-    worksApi.getTree(Number(id)).then(setData)
+    worksApi.getTree(id).then(setData)
   }, [id])
 
   // 初始视角
@@ -299,7 +299,7 @@ export default function CreationTree() {
   const workColorMap = new Map<number, string>()
   workIds.forEach((wid, i) => workColorMap.set(wid, WORK_COLORS[i % WORK_COLORS.length]!))
 
-  const currentWorkId = Number(id)
+  const currentWorkId = id
 
   return (
     <div className="h-screen flex flex-col">

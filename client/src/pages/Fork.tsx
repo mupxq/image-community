@@ -42,8 +42,8 @@ export default function Fork() {
   useEffect(() => {
     if (!id) return
     Promise.all([
-      worksApi.getById(Number(id)),
-      worksApi.getPages(Number(id)),
+      worksApi.getById(id),
+      worksApi.getPages(id),
     ]).then(([w, p]) => {
       setParentWork(w)
       setParentPages(fromPage > 0 ? p.filter(pg => pg.page_number <= fromPage) : p)
@@ -74,7 +74,7 @@ export default function Fork() {
     if (!subtitle.trim()) return alert('请输入副标题')
     if (!pages[0]?.description.trim()) return alert('请至少填写第一页场景描述')
     if (!id) return
-    const result = await worksApi.fork(Number(id), {
+    const result = await worksApi.fork(id, {
       subtitle: subtitle.trim(),
       description: desc.trim(),
       pages,
@@ -107,7 +107,7 @@ export default function Fork() {
           pageCount: aiPageCount,
           textProvider: selectedTextProvider,
           imageProvider: selectedImageProvider,
-          parentWorkId: Number(id),
+          parentWorkId: id,
           forkFromPage: fromPage || undefined,
         } as any)
       } else {
@@ -118,7 +118,7 @@ export default function Fork() {
           pageCount: aiPageCount,
           textConfig: { baseUrl: customTextBaseUrl.trim(), apiKey: customTextApiKey.trim(), model: customTextModel.trim() },
           imageConfig: { baseUrl: customImageBaseUrl.trim(), apiKey: customImageApiKey.trim(), model: customImageModel.trim() },
-          parentWorkId: Number(id),
+          parentWorkId: id,
           forkFromPage: fromPage || undefined,
         } as any)
       }

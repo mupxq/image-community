@@ -28,7 +28,7 @@ export default function Chat() {
 
   const load = async () => {
     if (!id) return
-    const data = await conversationsApi.getMessages(Number(id))
+    const data = await conversationsApi.getMessages(id)
     setConversation(data.conversation)
     setMembers(data.members)
     setMessages(data.messages)
@@ -42,7 +42,7 @@ export default function Chat() {
 
   const send = async () => {
     if (!input.trim() || !id) return
-    await conversationsApi.sendMessage(Number(id), { content: input.trim() })
+    await conversationsApi.sendMessage(id, { content: input.trim() })
     setInput('')
     load()
   }

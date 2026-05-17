@@ -20,7 +20,7 @@ export default function TaskPreview() {
 
   useEffect(() => {
     if (!id) return
-    tasksApi.getById(Number(id)).then((t) => {
+    tasksApi.getById(id).then((t) => {
       setTask(t)
       if (t.result) {
         setTitle(t.result.title || '')
@@ -79,7 +79,7 @@ export default function TaskPreview() {
     setPublishing(true)
     try {
       const isFork = !!task?.input_params?.parentWorkId
-      const res = await tasksApi.publish(Number(id), {
+      const res = await tasksApi.publish(id, {
         title: isFork ? undefined : title,
         subtitle: isFork ? subtitle : undefined,
         description: desc,
@@ -98,7 +98,7 @@ export default function TaskPreview() {
     if (!id || !confirm('确定取消生成？已产生的消耗仍会扣除积分。')) return
     setCancelling(true)
     try {
-      await tasksApi.cancel(Number(id))
+      await tasksApi.cancel(id)
       setTask((prev: any) => prev ? { ...prev, status: 'cancelled' } : prev)
     } catch (err: any) {
       alert(err.message || '取消失败')
@@ -110,7 +110,7 @@ export default function TaskPreview() {
   const handleDelete = useCallback(async () => {
     if (!id || !confirm('确定删除此任务？')) return
     try {
-      await tasksApi.delete(Number(id))
+      await tasksApi.delete(id)
       navigate('/profile')
     } catch (err: any) {
       alert(err.message || '删除失败')
@@ -120,7 +120,7 @@ export default function TaskPreview() {
   const handleRegenerate = useCallback(async () => {
     if (!id || !confirm('确定重新生成？将创建新任务。')) return
     try {
-      const res = await tasksApi.regenerate(Number(id))
+      const res = await tasksApi.regenerate(id)
       navigate(`/task/${res.taskId}`)
     } catch (err: any) {
       alert(err.message || '重新生成失败')
