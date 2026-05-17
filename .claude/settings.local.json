@@ -6,5 +6,6 @@
       "mcp__tavily-mcp__tavily_extract",
       "mcp__tavily-mcp__tavily_search"
     ]
-  }
+  },
+  "outputStyle": "nekomata-engineer"
 }
