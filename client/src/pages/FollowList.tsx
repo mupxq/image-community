@@ -21,7 +21,7 @@ export default function FollowList() {
   useEffect(() => {
     if (!id) return
     const fetch = isFollowers ? followsApi.followers : followsApi.following
-    fetch(Number(id)).then(setUsers as any).catch(() => {})
+    fetch(id).then(setUsers as any).catch(() => {})
   }, [id, isFollowers])
 
   return (

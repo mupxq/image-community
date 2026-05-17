@@ -29,14 +29,14 @@ export default function UserProfile() {
   const [loading, setLoading] = useState(false)
   const [showFollowList, setShowFollowList] = useState<'followers' | 'following' | null>(null)
 
-  const isMe = currentUser && id && currentUser.id === Number(id)
+  const isMe = currentUser && id && currentUser.id === id
 
   useEffect(() => {
     if (!id) return
-    usersApi.getById(Number(id)).then(setUserInfo as any).catch(() => {})
-    usersApi.getWorks(Number(id)).then(setWorks).catch(() => {})
+    usersApi.getById(id).then(setUserInfo as any).catch(() => {})
+    usersApi.getWorks(id).then(setWorks).catch(() => {})
     if (currentUser && !isMe) {
-      followsApi.status(Number(id)).then((s) => {
+      followsApi.status(id).then((s) => {
         setIsFollowing(s.isFollowing)
         setIsMutual(s.isMutual)
       }).catch(() => {})
@@ -46,7 +46,7 @@ export default function UserProfile() {
   const handleDM = async () => {
     if (!id || !currentUser) { navigate('/login'); return }
     try {
-      const res = await conversationsApi.create(Number(id))
+      const res = await conversationsApi.create(id)
       navigate(`/chat/${res.conversation_id}`)
     } catch (err: any) {
       alert(err.message || '操作失败')
@@ -58,16 +58,16 @@ export default function UserProfile() {
     setLoading(true)
     try {
       if (isFollowing) {
-        await followsApi.unfollow(Number(id))
+        await followsApi.unfollow(id)
         setIsFollowing(false)
         setIsMutual(false)
         if (userInfo) setUserInfo({ ...userInfo, followerCount: userInfo.followerCount - 1 })
       } else {
-        await followsApi.follow(Number(id))
+        await followsApi.follow(id)
         setIsFollowing(true)
         if (userInfo) setUserInfo({ ...userInfo, followerCount: userInfo.followerCount + 1 })
         // 重新检查互关
-        const s = await followsApi.status(Number(id))
+        const s = await followsApi.status(id)
         setIsMutual(s.isMutual)
       }
     } catch (err: any) {
@@ -152,7 +152,7 @@ export default function UserProfile() {
 
       {showFollowList && id && (
         <FollowListModal
-          userId={Number(id)}
+          userId={id}
           type={showFollowList}
           onClose={() => setShowFollowList(null)}
         />

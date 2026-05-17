@@ -1,0 +1,1600 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CoCoNut 企业级重构计划</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+    :root {
+      --bg: #0a0a0f;
+      --surface: #12121a;
+      --card: #1a1a2e;
+      --card-hover: #222240;
+      --border: #2a2a3e;
+      --border-light: #3a3a52;
+      --text: #e8e8f0;
+      --text-secondary: #9898b0;
+      --text-dim: #6b6b85;
+      --primary: #6c5ce7;
+      --primary-light: #a29bfe;
+      --primary-glow: rgba(108, 92, 231, 0.15);
+      --accent: #00d2ff;
+      --accent-pink: #ff6b9d;
+      --success: #00e676;
+      --warning: #ffc107;
+      --danger: #ff5252;
+      --info: #448aff;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    html {
+      scroll-behavior: smooth;
+      scrollbar-width: thin;
+      scrollbar-color: var(--border) var(--bg);
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.7;
+      display: flex;
+      min-height: 100vh;
+    }
+
+    /* ====== Sidebar ====== */
+    .sidebar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 280px;
+      height: 100vh;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      padding: 32px 0;
+      overflow-y: auto;
+      z-index: 100;
+      transition: transform 0.3s ease;
+    }
+
+    .sidebar-header {
+      padding: 0 24px 24px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 16px;
+    }
+
+    .sidebar-logo {
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--primary-light);
+      letter-spacing: -0.5px;
+    }
+
+    .sidebar-logo span {
+      color: var(--accent);
+    }
+
+    .sidebar-subtitle {
+      font-size: 12px;
+      color: var(--text-dim);
+      margin-top: 4px;
+    }
+
+    .sidebar nav a {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 24px;
+      color: var(--text-secondary);
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 500;
+      transition: all 0.2s;
+      border-left: 3px solid transparent;
+    }
+
+    .sidebar nav a:hover {
+      color: var(--text);
+      background: var(--primary-glow);
+      border-left-color: var(--primary);
+    }
+
+    .sidebar nav a .num {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 22px;
+      height: 22px;
+      border-radius: 6px;
+      background: var(--card);
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-dim);
+      flex-shrink: 0;
+    }
+
+    /* ====== Main Content ====== */
+    .main {
+      margin-left: 280px;
+      flex: 1;
+      min-width: 0;
+    }
+
+    .hero {
+      padding: 80px 48px 48px;
+      background: linear-gradient(135deg, rgba(108,92,231,0.08) 0%, rgba(0,210,255,0.05) 100%);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .hero h1 {
+      font-size: 40px;
+      font-weight: 700;
+      letter-spacing: -1px;
+      background: linear-gradient(135deg, var(--primary-light), var(--accent));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 12px;
+    }
+
+    .hero .subtitle {
+      font-size: 18px;
+      color: var(--text-secondary);
+    }
+
+    .meta {
+      display: flex;
+      gap: 24px;
+      margin-top: 20px;
+    }
+
+    .meta-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      color: var(--text-dim);
+    }
+
+    .meta-item .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+    }
+
+    .content {
+      max-width: 900px;
+      padding: 48px;
+    }
+
+    /* ====== Sections ====== */
+    .section {
+      margin-bottom: 64px;
+      scroll-margin-top: 32px;
+    }
+
+    .section-header {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 32px;
+      padding-bottom: 16px;
+      border-bottom: 2px solid var(--border);
+    }
+
+    .section-num {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 40px;
+      height: 40px;
+      border-radius: 12px;
+      background: linear-gradient(135deg, var(--primary), var(--primary-light));
+      font-size: 18px;
+      font-weight: 700;
+      color: white;
+      flex-shrink: 0;
+    }
+
+    .section-title {
+      font-size: 26px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+    }
+
+    h3 {
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--primary-light);
+      margin: 32px 0 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    h3::before {
+      content: '';
+      width: 4px;
+      height: 20px;
+      border-radius: 2px;
+      background: var(--primary);
+      flex-shrink: 0;
+    }
+
+    p, li {
+      color: var(--text-secondary);
+      font-size: 15px;
+    }
+
+    /* ====== Tables ====== */
+    .table-wrapper {
+      overflow-x: auto;
+      margin: 16px 0;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+
+    thead th {
+      background: var(--card);
+      padding: 12px 16px;
+      text-align: left;
+      font-weight: 600;
+      font-size: 13px;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    tbody td {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+      color: var(--text-secondary);
+    }
+
+    tbody tr:last-child td { border-bottom: none; }
+
+    tbody tr:hover { background: var(--card); }
+
+    /* ====== Code Blocks ====== */
+    pre {
+      background: #0d0d14;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px 24px;
+      overflow-x: auto;
+      margin: 16px 0;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      line-height: 1.6;
+      color: #c8c8e0;
+    }
+
+    code {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+    }
+
+    :not(pre) > code {
+      background: var(--card);
+      padding: 2px 8px;
+      border-radius: 4px;
+      color: var(--accent);
+      font-size: 13px;
+    }
+
+    .code-label {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 8px;
+      padding: 4px 10px;
+      background: var(--card);
+      border-radius: 6px;
+    }
+
+    /* ====== Lists ====== */
+    ul, ol {
+      padding-left: 20px;
+      margin: 12px 0;
+    }
+
+    li {
+      margin: 6px 0;
+    }
+
+    li::marker {
+      color: var(--primary);
+    }
+
+    /* ====== Goal Cards ====== */
+    .goals-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 16px;
+      margin: 16px 0;
+    }
+
+    .goal-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+      transition: border-color 0.2s;
+    }
+
+    .goal-card:hover {
+      border-color: var(--primary);
+    }
+
+    .goal-card .goal-num {
+      font-size: 28px;
+      font-weight: 700;
+      color: var(--primary);
+      margin-bottom: 8px;
+    }
+
+    .goal-card .goal-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 6px;
+    }
+
+    .goal-card .goal-desc {
+      font-size: 14px;
+      color: var(--text-secondary);
+    }
+
+    /* ====== Phase Cards ====== */
+    .phase {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px;
+      margin: 20px 0;
+    }
+
+    .phase-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .phase-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 4px 12px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      flex-shrink: 0;
+    }
+
+    .phase-badge.phase-0 { background: rgba(68, 138, 255, 0.15); color: var(--info); }
+    .phase-badge.phase-1 { background: rgba(108, 92, 231, 0.15); color: var(--primary-light); }
+    .phase-badge.phase-2 { background: rgba(255, 107, 157, 0.15); color: var(--accent-pink); }
+    .phase-badge.phase-3 { background: rgba(0, 210, 255, 0.15); color: var(--accent); }
+    .phase-badge.phase-4 { background: rgba(0, 230, 118, 0.15); color: var(--success); }
+    .phase-badge.phase-5 { background: rgba(255, 193, 7, 0.15); color: var(--warning); }
+    .phase-badge.phase-6 { background: rgba(108, 92, 231, 0.15); color: var(--primary-light); }
+    .phase-badge.phase-7 { background: rgba(0, 230, 118, 0.15); color: var(--success); }
+
+    .phase-title {
+      font-size: 17px;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .phase-duration {
+      font-size: 13px;
+      color: var(--text-dim);
+      margin-left: auto;
+    }
+
+    .phase .objective {
+      background: var(--primary-glow);
+      border-radius: 8px;
+      padding: 12px 16px;
+      margin-bottom: 16px;
+      font-size: 14px;
+      color: var(--primary-light);
+    }
+
+    .phase .objective strong {
+      color: var(--text);
+    }
+
+    .checklist {
+      list-style: none;
+      padding: 0;
+    }
+
+    .checklist li {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 6px 0;
+      font-size: 14px;
+      color: var(--text-secondary);
+    }
+
+    .checklist li::before {
+      content: '';
+      width: 18px;
+      height: 18px;
+      border: 2px solid var(--border-light);
+      border-radius: 4px;
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+
+    .phase .verify {
+      margin-top: 16px;
+      padding: 10px 16px;
+      background: rgba(0, 230, 118, 0.08);
+      border-radius: 8px;
+      font-size: 13px;
+      color: var(--success);
+    }
+
+    .phase .verify strong {
+      color: var(--text);
+    }
+
+    /* ====== Decision Cards ====== */
+    .decision-grid {
+      display: grid;
+      gap: 12px;
+      margin: 16px 0;
+    }
+
+    .decision-card {
+      display: flex;
+      gap: 16px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px 20px;
+    }
+
+    .decision-card .decision-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text);
+      min-width: 240px;
+      flex-shrink: 0;
+    }
+
+    .decision-card .decision-desc {
+      font-size: 14px;
+      color: var(--text-secondary);
+    }
+
+    /* ====== Discussion Points ====== */
+    .discussion-item {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-left: 4px solid var(--accent);
+      border-radius: 0 12px 12px 0;
+      padding: 20px 24px;
+      margin: 16px 0;
+    }
+
+    .discussion-item .q-num {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--accent);
+      margin-bottom: 8px;
+    }
+
+    .discussion-item .q-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 6px;
+    }
+
+    .discussion-item .q-desc {
+      font-size: 14px;
+      color: var(--text-secondary);
+    }
+
+    /* ====== Risk Cards ====== */
+    .risk-grid {
+      display: grid;
+      gap: 12px;
+      margin: 16px 0;
+    }
+
+    .risk-card {
+      display: flex;
+      gap: 16px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px 20px;
+    }
+
+    .risk-card .risk-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      background: rgba(255, 82, 82, 0.12);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      flex-shrink: 0;
+    }
+
+    .risk-card .risk-content {
+      flex: 1;
+    }
+
+    .risk-card .risk-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 4px;
+    }
+
+    .risk-card .risk-desc {
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+
+    /* ====== Tech Stack ====== */
+    .tech-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin: 16px 0;
+    }
+
+    .tech-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+      text-align: center;
+      transition: border-color 0.2s;
+    }
+
+    .tech-card:hover { border-color: var(--primary); }
+
+    .tech-card .tech-layer {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 8px;
+    }
+
+    .tech-card .tech-from {
+      font-size: 13px;
+      color: var(--text-dim);
+      text-decoration: line-through;
+      margin-bottom: 4px;
+    }
+
+    .tech-card .tech-to {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--accent);
+    }
+
+    .tech-card .tech-reason {
+      font-size: 12px;
+      color: var(--text-dim);
+      margin-top: 8px;
+      line-height: 1.4;
+    }
+
+    /* ====== Pyramid ====== */
+    .pyramid {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin: 24px 0;
+      gap: 4px;
+    }
+
+    .pyramid-level {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 8px;
+      padding: 12px;
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--text);
+      position: relative;
+    }
+
+    .pyramid-level .py-label {
+      text-align: center;
+    }
+
+    .pyramid-level .py-note {
+      position: absolute;
+      right: -240px;
+      font-size: 12px;
+      color: var(--text-dim);
+      white-space: nowrap;
+    }
+
+    .py-e2e { width: 200px; background: rgba(255, 107, 157, 0.2); }
+    .py-integration { width: 360px; background: rgba(0, 210, 255, 0.15); }
+    .py-unit { width: 520px; background: rgba(108, 92, 231, 0.2); }
+
+    /* ====== TDD Flow ====== */
+    .tdd-flow {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      margin: 24px 0;
+      flex-wrap: wrap;
+    }
+
+    .tdd-step {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      padding: 12px 16px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      min-width: 100px;
+    }
+
+    .tdd-step .step-num {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      font-weight: 600;
+      color: white;
+    }
+
+    .tdd-step:nth-child(1) .step-num { background: var(--danger); }
+    .tdd-step:nth-child(3) .step-num { background: var(--success); }
+    .tdd-step:nth-child(5) .step-num { background: var(--success); }
+    .tdd-step:nth-child(7) .step-num { background: var(--primary); }
+
+    .tdd-step .step-text {
+      font-size: 12px;
+      color: var(--text-secondary);
+      text-align: center;
+    }
+
+    .tdd-arrow {
+      color: var(--text-dim);
+      font-size: 18px;
+    }
+
+    /* ====== Footer ====== */
+    .footer {
+      margin-top: 64px;
+      padding: 24px 0;
+      border-top: 1px solid var(--border);
+      text-align: center;
+      font-size: 13px;
+      color: var(--text-dim);
+    }
+
+    /* ===== Responsive ====== */
+    @media (max-width: 1024px) {
+      .sidebar { transform: translateX(-100%); }
+      .main { margin-left: 0; }
+      .goals-grid { grid-template-columns: 1fr; }
+      .tech-grid { grid-template-columns: repeat(2, 1fr); }
+      .pyramid-level .py-note { display: none; }
+      .content { padding: 32px 24px; }
+      .hero { padding: 48px 24px 32px; }
+    }
+
+    @media (max-width: 640px) {
+      .tech-grid { grid-template-columns: 1fr; }
+      .hero h1 { font-size: 28px; }
+      .section-title { font-size: 22px; }
+      .decision-card { flex-direction: column; }
+      .decision-card .decision-title { min-width: auto; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <div class="sidebar-logo">CoCo<span>Nut</span></div>
+      <div class="sidebar-subtitle">企业级重构计划 v1.0</div>
+    </div>
+    <nav>
+      <a href="#sec-1"><span class="num">1</span> 现状问题诊断</a>
+      <a href="#sec-2"><span class="num">2</span> 重构目标</a>
+      <a href="#sec-3"><span class="num">3</span> 技术选型</a>
+      <a href="#sec-4"><span class="num">4</span> 数据库设计</a>
+      <a href="#sec-5"><span class="num">5</span> 后端架构</a>
+      <a href="#sec-6"><span class="num">6</span> TDD 策略</a>
+      <a href="#sec-7"><span class="num">7</span> 分阶段计划</a>
+      <a href="#sec-8"><span class="num">8</span> 数据迁移</a>
+      <a href="#sec-9"><span class="num">9</span> 风险与注意事项</a>
+      <a href="#sec-10"><span class="num">10</span> 讨论点</a>
+    </nav>
+  </aside>
+
+  <!-- Main Content -->
+  <div class="main">
+
+    <!-- Hero -->
+    <div class="hero">
+      <h1>CoCoNut 企业级重构计划</h1>
+      <p class="subtitle">将 CoCoNut 从原型/Demo 阶段重构为企业级工程化项目</p>
+      <div class="meta">
+        <div class="meta-item"><div class="dot" style="background:var(--primary)"></div> 版本 v1.0</div>
+        <div class="meta-item"><div class="dot" style="background:var(--accent)"></div> 2026-05-17</div>
+        <div class="meta-item"><div class="dot" style="background:var(--accent-pink)"></div> 7 个阶段 · 约 16-21 天</div>
+      </div>
+    </div>
+
+    <div class="content">
+
+      <!-- Section 1 -->
+      <div class="section" id="sec-1">
+        <div class="section-header">
+          <div class="section-num">1</div>
+          <h2 class="section-title">现状问题诊断</h2>
+        </div>
+
+        <h3>数据库层</h3>
+        <div class="table-wrapper">
+          <table>
+            <thead><tr><th>问题</th><th>影响</th></tr></thead>
+            <tbody>
+              <tr><td>SQLite 单文件，无并发写入能力</td><td>多用户同时操作时锁竞争严重，AI 生成长事务阻塞其他请求</td></tr>
+              <tr><td>迁移靠 PRAGMA + ALTER TABLE 拼凑</td><td>已有 6+ 段迁移代码散落在 database.ts，无法回滚，不可靠</td></tr>
+              <tr><td>无索引设计</td><td>work_pages、comments、messages 等表缺少索引，数据量增长后查询退化</td></tr>
+              <tr><td>无数据校验层</td><td>外键约束依赖 SQLite pragma，应用层无校验，脏数据风险高</td></tr>
+              <tr><td>文件存储本地磁盘</td><td>无 CDN、无备份策略，服务器挂了图就没了</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>后端架构</h3>
+        <div class="table-wrapper">
+          <table>
+            <thead><tr><th>问题</th><th>影响</th></tr></thead>
+            <tbody>
+              <tr><td>所有路由堆在 routes.ts (743 行)</td><td>单文件巨型路由，维护困难，无法分工</td></tr>
+              <tr><td>SQL 语句散落在路由处理函数中</td><td>无数据访问层，SQL 与业务逻辑耦合，无法复用和测试</td></tr>
+              <tr><td>无错误处理中间件</td><td>每个路由手动 try/catch，遗漏时直接 500 崩溃</td></tr>
+              <tr><td>无输入校验</td><td>靠手动 if 检查，不完整也不统一</td></tr>
+              <tr><td>AI 生成逻辑与路由耦合</td><td>aiRoutes.ts 有 615 行，生成/取消/重试逻辑混杂</td></tr>
+              <tr><td>无测试</td><td>0 个测试用例，任何改动都有破坏现有功能的风险</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>前端</h3>
+        <div class="table-wrapper">
+          <table>
+            <thead><tr><th>问题</th><th>影响</th></tr></thead>
+            <tbody>
+              <tr><td>API 调用无统一错误处理</td><td>401 处理散落在各处</td></tr>
+              <tr><td>无组件测试</td><td>UI 变更无法验证</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Section 2 -->
+      <div class="section" id="sec-2">
+        <div class="section-header">
+          <div class="section-num">2</div>
+          <h2 class="section-title">重构目标</h2>
+        </div>
+        <div class="goals-grid">
+          <div class="goal-card">
+            <div class="goal-num">01</div>
+            <div class="goal-title">数据库稳定可靠</div>
+            <div class="goal-desc">迁移到 PostgreSQL，支持并发、事务、完善约束</div>
+          </div>
+          <div class="goal-card">
+            <div class="goal-num">02</div>
+            <div class="goal-title">TDD 驱动开发</div>
+            <div class="goal-desc">先写测试再写代码，保证每次变更的安全性</div>
+          </div>
+          <div class="goal-card">
+            <div class="goal-num">03</div>
+            <div class="goal-title">分层架构</div>
+            <div class="goal-desc">Route → Service → Repository，职责清晰可测试</div>
+          </div>
+          <div class="goal-card">
+            <div class="goal-num">04</div>
+            <div class="goal-title">渐进式迁移</div>
+            <div class="goal-desc">分阶段执行，每个阶段可独立验证，不一次性推翻重写</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Section 3 -->
+      <div class="section" id="sec-3">
+        <div class="section-header">
+          <div class="section-num">3</div>
+          <h2 class="section-title">技术选型</h2>
+        </div>
+        <div class="tech-grid">
+          <div class="tech-card">
+            <div class="tech-layer">数据库</div>
+            <div class="tech-from">SQLite</div>
+            <div class="tech-to">PostgreSQL</div>
+            <div class="tech-reason">并发写入 · JSONB · 全文搜索 · 成熟生态</div>
+          </div>
+          <div class="tech-card">
+            <div class="tech-layer">ORM / 查询</div>
+            <div class="tech-from">手写 SQL</div>
+            <div class="tech-to">Drizzle ORM</div>
+            <div class="tech-reason">类型安全 · 轻量 · 迁移工具内置</div>
+          </div>
+          <div class="tech-card">
+            <div class="tech-layer">校验</div>
+            <div class="tech-from">手动 if</div>
+            <div class="tech-to">Zod</div>
+            <div class="tech-reason">类型推导 · 统一校验层 · 与 Drizzle 联动</div>
+          </div>
+          <div class="tech-card">
+            <div class="tech-layer">测试框架</div>
+            <div class="tech-from">无</div>
+            <div class="tech-to">Vitest</div>
+            <div class="tech-reason">Vite 生态一致 · 速度快 · TS 原生</div>
+          </div>
+          <div class="tech-card">
+            <div class="tech-layer">API 测试</div>
+            <div class="tech-from">无</div>
+            <div class="tech-to">Supertest</div>
+            <div class="tech-reason">HTTP 集成测试 · 配合 Vitest</div>
+          </div>
+          <div class="tech-card">
+            <div class="tech-layer">代码规范</div>
+            <div class="tech-from">无</div>
+            <div class="tech-to">ESLint + Prettier</div>
+            <div class="tech-reason">统一风格 · 已有 ESLint 依赖</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Section 4 -->
+      <div class="section" id="sec-4">
+        <div class="section-header">
+          <div class="section-num">4</div>
+          <h2 class="section-title">数据库重新设计</h2>
+        </div>
+
+        <h3>设计原则</h3>
+        <ul>
+          <li>所有表加 <code>created_at</code>、<code>updated_at</code>（由应用层统一管理）</li>
+          <li>所有货币/积分字段用 <code>INTEGER</code>（分为单位，避免浮点）</li>
+          <li>JSON 字段用 PostgreSQL <code>JSONB</code>（AI 任务参数等）</li>
+          <li>软删除 vs 硬删除：<code>works</code> 软删除（<code>deleted_at</code>），其他表硬删除</li>
+          <li>为所有外键查询创建索引</li>
+          <li><code>enum</code> 类型用 PostgreSQL 原生 <code>ENUM</code></li>
+        </ul>
+
+        <h3>Schema 设计</h3>
+        <div class="code-label">SQL — 完整建表语句</div>
+        <pre><code>-- ============ 用户域 ============
+
+CREATE TYPE user_status AS ENUM ('active', 'banned', 'deleted');
+
+CREATE TABLE users (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  username      VARCHAR(50) UNIQUE NOT NULL,
+  password_hash TEXT NOT NULL,
+  nickname      VARCHAR(100) NOT NULL,
+  avatar        TEXT DEFAULT '',
+  bio           TEXT DEFAULT '',
+  credits       INTEGER NOT NULL DEFAULT 1000 CHECK (credits >= 0),
+  status        user_status NOT NULL DEFAULT 'active',
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_users_username ON users(username);
+CREATE INDEX idx_users_nickname ON users(nickname);
+
+-- ============ 作品域 ============
+
+CREATE TYPE work_type AS ENUM ('comic', 'drama', 'novel');
+CREATE TYPE work_status AS ENUM ('draft', 'published', 'deleted');
+
+CREATE TABLE works (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  title           VARCHAR(200) NOT NULL,
+  subtitle        VARCHAR(200) DEFAULT '',
+  description     TEXT DEFAULT '',
+  cover_image     TEXT DEFAULT '',
+  type            work_type NOT NULL DEFAULT 'comic',
+  status          work_status NOT NULL DEFAULT 'draft',
+  allow_fork      BOOLEAN NOT NULL DEFAULT true,
+  creator_id      UUID NOT NULL REFERENCES users(id),
+  parent_work_id  UUID REFERENCES works(id),
+  root_work_id    UUID REFERENCES works(id),
+  fork_from_page  INTEGER DEFAULT NULL,
+  deleted_at      TIMESTAMPTZ DEFAULT NULL,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_works_creator ON works(creator_id);
+CREATE INDEX idx_works_parent ON works(parent_work_id) WHERE parent_work_id IS NOT NULL;
+CREATE INDEX idx_works_root ON works(root_work_id) WHERE root_work_id IS NOT NULL;
+CREATE INDEX idx_works_status_type ON works(status, type);
+CREATE INDEX idx_works_created ON works(created_at DESC);
+
+-- 作品页面
+CREATE TABLE work_pages (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  work_id       UUID NOT NULL REFERENCES works(id) ON DELETE CASCADE,
+  page_number   INTEGER NOT NULL CHECK (page_number > 0),
+  image_url     TEXT DEFAULT '',
+  description   TEXT DEFAULT '',
+  dialogue      TEXT DEFAULT '',
+  ai_generated  BOOLEAN NOT NULL DEFAULT false,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX idx_pages_work_page ON work_pages(work_id, page_number);
+
+-- 共创贡献者
+CREATE TYPE contributor_role AS ENUM ('creator', 'ancestor', 'collaborator');
+
+CREATE TABLE contributors (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  work_id    UUID NOT NULL REFERENCES works(id) ON DELETE CASCADE,
+  user_id    UUID NOT NULL REFERENCES users(id),
+  role       contributor_role NOT NULL DEFAULT 'creator',
+  joined_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(work_id, user_id)
+);
+
+-- ============ 社交域 ============
+
+CREATE TABLE follows (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  follower_id  UUID NOT NULL REFERENCES users(id),
+  following_id UUID NOT NULL REFERENCES users(id),
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(follower_id, following_id),
+  CHECK (follower_id != following_id)
+);
+
+CREATE TABLE work_likes (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  work_id    UUID NOT NULL REFERENCES works(id) ON DELETE CASCADE,
+  user_id    UUID NOT NULL REFERENCES users(id),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(work_id, user_id)
+);
+
+CREATE TABLE page_likes (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  page_id    UUID NOT NULL REFERENCES work_pages(id) ON DELETE CASCADE,
+  user_id    UUID NOT NULL REFERENCES users(id),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(page_id, user_id)
+);
+
+CREATE TABLE comments (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  work_id    UUID NOT NULL REFERENCES works(id) ON DELETE CASCADE,
+  user_id    UUID NOT NULL REFERENCES users(id),
+  parent_id  UUID REFERENCES comments(id) ON DELETE CASCADE,
+  content    TEXT NOT NULL CHECK (length(content) > 0 AND length(content) <= 2000),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- ============ 阅读域 ============
+
+CREATE TYPE bookmark_status AS ENUM ('want_read', 'reading', 'finished');
+
+CREATE TABLE bookmarks (
+  id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id        UUID NOT NULL REFERENCES users(id),
+  work_id        UUID NOT NULL REFERENCES works(id),
+  read_status    bookmark_status NOT NULL DEFAULT 'want_read',
+  last_read_page INTEGER NOT NULL DEFAULT 0 CHECK (last_read_page >= 0),
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(user_id, work_id)
+);
+
+CREATE TABLE subscriptions (
+  id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id                 UUID NOT NULL REFERENCES users(id),
+  work_id                 UUID NOT NULL REFERENCES works(id),
+  last_viewed_fork_count  INTEGER NOT NULL DEFAULT 0,
+  created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(user_id, work_id)
+);
+
+-- ============ 消息域 ============
+
+CREATE TYPE conversation_type AS ENUM ('private', 'group', 'system');
+CREATE TYPE message_type AS ENUM ('text', 'image', 'work_share', 'system');
+
+CREATE TABLE conversations (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  type       conversation_type NOT NULL DEFAULT 'private',
+  title      VARCHAR(200) DEFAULT '',
+  work_id    UUID REFERENCES works(id),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE conversation_members (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  conversation_id UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+  user_id         UUID NOT NULL REFERENCES users(id),
+  joined_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(conversation_id, user_id)
+);
+
+CREATE TABLE messages (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  conversation_id UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+  sender_id       UUID REFERENCES users(id),  -- NULL = 系统发送
+  content         TEXT NOT NULL,
+  msg_type        message_type NOT NULL DEFAULT 'text',
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- ============ AI 域 ============
+
+CREATE TYPE task_status AS ENUM ('generating', 'completed', 'failed', 'cancelled');
+CREATE TYPE credit_type AS ENUM ('check_in', 'ai_generate', 'admin_grant', 'refund');
+
+CREATE TABLE user_ai_configs (
+  id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id        UUID NOT NULL UNIQUE REFERENCES users(id),
+  text_base_url  TEXT DEFAULT '',
+  text_api_key   TEXT DEFAULT '',
+  text_model     TEXT DEFAULT '',
+  image_base_url TEXT DEFAULT '',
+  image_api_key  TEXT DEFAULT '',
+  image_model    TEXT DEFAULT '',
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE generation_tasks (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id      UUID NOT NULL REFERENCES users(id),
+  status       task_status NOT NULL DEFAULT 'generating',
+  type         work_type NOT NULL DEFAULT 'comic',
+  input_params JSONB NOT NULL DEFAULT '{}',
+  result       JSONB DEFAULT NULL,
+  error        TEXT DEFAULT NULL,
+  credits_used INTEGER NOT NULL DEFAULT 0 CHECK (credits_used >= 0),
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  completed_at TIMESTAMPTZ DEFAULT NULL
+);
+
+CREATE TABLE check_ins (
+  id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id        UUID NOT NULL REFERENCES users(id),
+  check_date     DATE NOT NULL,
+  streak         INTEGER NOT NULL DEFAULT 1 CHECK (streak >= 1),
+  credits_earned INTEGER NOT NULL,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(user_id, check_date)
+);
+
+CREATE TABLE credit_logs (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id     UUID NOT NULL REFERENCES users(id),
+  amount      INTEGER NOT NULL,
+  type        credit_type NOT NULL,
+  description TEXT DEFAULT '',
+  task_id     UUID REFERENCES generation_tasks(id),
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);</code></pre>
+
+        <h3>关键设计决策</h3>
+        <div class="decision-grid">
+          <div class="decision-card">
+            <div class="decision-title">UUID 主键</div>
+            <div class="decision-desc">替代自增 ID，防止枚举攻击，分布式友好</div>
+          </div>
+          <div class="decision-card">
+            <div class="decision-title">ON DELETE CASCADE</div>
+            <div class="decision-desc">work_pages、contributors 等随 works 级联删除</div>
+          </div>
+          <div class="decision-card">
+            <div class="decision-title">软删除 works</div>
+            <div class="decision-desc">父作品删除时子作品不断链，用 deleted_at 标记而非真正删除</div>
+          </div>
+          <div class="decision-card">
+            <div class="decision-title">JSONB 用于 AI 参数</div>
+            <div class="decision-desc">input_params 和 result 结构灵活，适合 JSONB 存储</div>
+          </div>
+          <div class="decision-card">
+            <div class="decision-title">check_ins UNIQUE 约束</div>
+            <div class="decision-desc">数据库层面保证每天只能签到一次</div>
+          </div>
+          <div class="decision-card">
+            <div class="decision-title">comments 长度约束</div>
+            <div class="decision-desc">CHECK(0 &lt; length &lt;= 2000)，数据库层兜底</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Section 5 -->
+      <div class="section" id="sec-5">
+        <div class="section-header">
+          <div class="section-num">5</div>
+          <h2 class="section-title">后端架构重构</h2>
+        </div>
+
+        <h3>分层结构</h3>
+        <div class="code-label">目录结构</div>
+        <pre><code>backend/src/
+├── index.ts              # Express 启动、中间件注册
+├── config.ts             # 环境变量、配置
+├── db/
+│   ├── client.ts         # PostgreSQL 连接（Drizzle）
+│   ├── schema.ts         # Drizzle schema 定义
+│   └── migrations/       # Drizzle 迁移文件
+├── modules/
+│   ├── auth/
+│   │   ├── auth.routes.ts
+│   │   ├── auth.service.ts
+│   │   ├── auth.repository.ts
+│   │   ├── auth.test.ts
+│   │   └── auth.schema.ts      # Zod 校验
+│   ├── works/
+│   │   ├── works.routes.ts
+│   │   ├── works.service.ts
+│   │   ├── works.repository.ts
+│   │   ├── works.test.ts
+│   │   └── works.schema.ts
+│   ├── comments/
+│   ├── bookmarks/
+│   ├── messages/
+│   ├── ai/
+│   │   ├── ai.routes.ts
+│   │   ├── ai.service.ts       # 生成编排逻辑
+│   │   ├── ai.repository.ts
+│   │   ├── ai.test.ts
+│   │   ├── providers/          # AI Provider 可插拔架构
+│   │   └── ai.schema.ts
+│   ├── credits/
+│   ├── follows/
+│   └── users/
+├── middleware/
+│   ├── auth.ts           # requireAuth, optionalAuth
+│   ├── errorHandler.ts   # 全局错误处理
+│   └── validate.ts       # Zod 校验中间件
+└── shared/
+    ├── errors.ts         # 自定义错误类
+    └── types.ts          # 共享类型</code></pre>
+
+        <h3>三层职责</h3>
+        <div class="table-wrapper">
+          <table>
+            <thead><tr><th>层</th><th>职责</th><th>可测试性</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Routes</strong></td><td>HTTP 解析、Zod 校验、调用 Service、返回响应</td><td>Supertest 集成测试</td></tr>
+              <tr><td><strong>Service</strong></td><td>业务逻辑编排、事务管理、权限检查</td><td>纯函数单元测试（mock Repository）</td></tr>
+              <tr><td><strong>Repository</strong></td><td>数据库 CRUD、SQL 查询</td><td>数据库集成测试（测试 DB 实例）</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>示例：Works 模块</h3>
+        <div class="code-label">TypeScript</div>
+        <pre><code>// works.schema.ts — Zod 校验
+export const createWorkSchema = z.object({
+  title: z.string().min(1).max(200),
+  description: z.string().max(5000).optional(),
+  type: z.enum(['comic', 'drama', 'novel']).default('comic'),
+  cover_image: z.string().url().optional(),
+  allow_fork: z.boolean().default(true),
+  pages: z.array(pageSchema).optional(),
+})
+
+// works.repository.ts — 数据访问
+export class WorksRepository {
+  constructor(private db: DrizzleInstance) {}
+
+  async findById(id: string) {
+    return this.db.query.works.findFirst({ where: eq(works.id, id) })
+  }
+
+  async create(data: NewWork) {
+    return this.db.insert(works).values(data).returning()
+  }
+}
+
+// works.service.ts — 业务逻辑
+export class WorksService {
+  constructor(
+    private worksRepo: WorksRepository,
+    private contributorsRepo: ContributorsRepository,
+  ) {}
+
+  async createWork(userId: string, input: CreateWorkInput) {
+    return this.db.transaction(async (tx) => { ... })
+  }
+}
+
+// works.routes.ts — 路由
+router.post('/works',
+  requireAuth,
+  validate(createWorkSchema),
+  async (req, res, next) => {
+    const work = await worksService.createWork(req.userId!, req.body)
+    res.status(201).json(work)
+  }
+)</code></pre>
+      </div>
+
+      <!-- Section 6 -->
+      <div class="section" id="sec-6">
+        <div class="section-header">
+          <div class="section-num">6</div>
+          <h2 class="section-title">TDD 实施策略</h2>
+        </div>
+
+        <h3>测试金字塔</h3>
+        <div class="pyramid">
+          <div class="pyramid-level py-e2e">
+            <span class="py-label">E2E 测试</span>
+            <span class="py-note">← 少量，关键用户流程</span>
+          </div>
+          <div class="pyramid-level py-integration">
+            <span class="py-label">集成测试</span>
+            <span class="py-note">← API 路由 + 真实数据库</span>
+          </div>
+          <div class="pyramid-level py-unit">
+            <span class="py-label">单元测试</span>
+            <span class="py-note">← Service 层业务逻辑</span>
+          </div>
+        </div>
+
+        <h3>测试分类</h3>
+        <div class="table-wrapper">
+          <table>
+            <thead><tr><th>类型</th><th>工具</th><th>覆盖范围</th><th>占比</th></tr></thead>
+            <tbody>
+              <tr><td><strong>单元测试</strong></td><td>Vitest</td><td>Service 层纯逻辑（权限检查、积分计算、fork 逻辑）</td><td>60%</td></tr>
+              <tr><td><strong>集成测试</strong></td><td>Vitest + PostgreSQL</td><td>Repository 层（真实 DB 读写）+ Routes（Supertest）</td><td>30%</td></tr>
+              <tr><td><strong>E2E 测试</strong></td><td>手动 / 未来补充</td><td>关键用户流程（注册→创作→发布→评论）</td><td>10%</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>TDD 工作流</h3>
+        <div class="tdd-flow">
+          <div class="tdd-step">
+            <div class="step-num">1</div>
+            <div class="step-text">写失败测试</div>
+          </div>
+          <div class="tdd-arrow">→</div>
+          <div class="tdd-step">
+            <div class="step-num">2</div>
+            <div class="step-text">最小实现</div>
+          </div>
+          <div class="tdd-arrow">→</div>
+          <div class="tdd-step">
+            <div class="step-num">3</div>
+            <div class="step-text">测试通过</div>
+          </div>
+          <div class="tdd-arrow">→</div>
+          <div class="tdd-step">
+            <div class="step-num">4</div>
+            <div class="step-text">重构</div>
+          </div>
+          <div class="tdd-arrow">→</div>
+          <div class="tdd-step">
+            <div class="step-num">5</div>
+            <div class="step-text">依然通过 ✓</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Section 7 -->
+      <div class="section" id="sec-7">
+        <div class="section-header">
+          <div class="section-num">7</div>
+          <h2 class="section-title">分阶段执行计划</h2>
+        </div>
+
+        <div class="phase">
+          <div class="phase-header">
+            <span class="phase-badge phase-0">Phase 0</span>
+            <span class="phase-title">基础设施准备</span>
+            <span class="phase-duration">1-2 天</span>
+          </div>
+          <div class="objective"><strong>目标：</strong>搭建测试和开发基础设施</div>
+          <ul class="checklist">
+            <li>安装依赖：<code>pg</code>、<code>drizzle-orm</code>、<code>drizzle-kit</code>、<code>zod</code>、<code>vitest</code>、<code>supertest</code></li>
+            <li>配置 Vitest</li>
+            <li>配置 Drizzle + PostgreSQL 连接</li>
+            <li>编写 Drizzle schema（对应第四节的 SQL）</li>
+            <li>生成初始迁移</li>
+            <li>配置环境变量（DATABASE_URL 等）</li>
+            <li>全局错误处理中间件</li>
+            <li>Zod 校验中间件</li>
+          </ul>
+          <div class="verify"><strong>验证：</strong><code>vitest run</code> 通过，<code>drizzle-kit push</code> 能建表</div>
+        </div>
+
+        <div class="phase">
+          <div class="phase-header">
+            <span class="phase-badge phase-1">Phase 1</span>
+            <span class="phase-title">用户模块 + 认证（TDD 驱动）</span>
+            <span class="phase-duration">2-3 天</span>
+          </div>
+          <div class="objective"><strong>目标：</strong>最独立的模块，建立 TDD 模式标杆</div>
+          <ul class="checklist">
+            <li><code>users/repository</code> + 测试</li>
+            <li><code>users/service</code> + 测试</li>
+            <li><code>auth/repository</code> + 测试</li>
+            <li><code>auth/service</code>（注册、登录、JWT）+ 测试</li>
+            <li><code>auth/routes</code> + Supertest 集成测试</li>
+            <li>Zod 校验 schema</li>
+            <li>数据迁移脚本（SQLite → PostgreSQL，用户数据）</li>
+          </ul>
+          <div class="verify"><strong>验证：</strong>所有用户/认证 API 测试通过，Postman 可调通</div>
+        </div>
+
+        <div class="phase">
+          <div class="phase-header">
+            <span class="phase-badge phase-2">Phase 2</span>
+            <span class="phase-title">作品模块（核心，最复杂）</span>
+            <span class="phase-duration">3-4 天</span>
+          </div>
+          <ul class="checklist">
+            <li><code>works/repository</code> + 测试</li>
+            <li><code>works/service</code>（CRUD + fork + 贡献者继承 + 创作树）+ 测试</li>
+            <li><code>works/routes</code> + 集成测试</li>
+            <li><code>contributors/repository</code> + 测试</li>
+            <li>数据迁移（works、work_pages、contributors）</li>
+          </ul>
+          <div class="verify"><strong>验证：</strong>作品 CRUD、fork、创作树 API 全部测试通过</div>
+        </div>
+
+        <div class="phase">
+          <div class="phase-header">
+            <span class="phase-badge phase-3">Phase 3</span>
+            <span class="phase-title">社交模块</span>
+            <span class="phase-duration">2 天</span>
+          </div>
+          <ul class="checklist">
+            <li><code>follows</code> 模块（Repository → Service → Routes → 测试）</li>
+            <li><code>comments</code> 模块（含嵌套回复）</li>
+            <li><code>work_likes</code> / <code>page_likes</code> 模块</li>
+            <li><code>subscriptions</code> 模块</li>
+            <li>数据迁移</li>
+          </ul>
+        </div>
+
+        <div class="phase">
+          <div class="phase-header">
+            <span class="phase-badge phase-4">Phase 4</span>
+            <span class="phase-title">阅读模块</span>
+            <span class="phase-duration">1-2 天</span>
+          </div>
+          <ul class="checklist">
+            <li><code>bookmarks</code> 模块</li>
+            <li>阅读进度追踪逻辑</li>
+            <li>数据迁移</li>
+          </ul>
+        </div>
+
+        <div class="phase">
+          <div class="phase-header">
+            <span class="phase-badge phase-5">Phase 5</span>
+            <span class="phase-title">消息模块</span>
+            <span class="phase-duration">2 天</span>
+          </div>
+          <ul class="checklist">
+            <li><code>conversations</code> / <code>messages</code> 模块</li>
+            <li>系统通知逻辑（从路由中抽离为 Service）</li>
+            <li>数据迁移</li>
+          </ul>
+        </div>
+
+        <div class="phase">
+          <div class="phase-header">
+            <span class="phase-badge phase-6">Phase 6</span>
+            <span class="phase-title">AI 模块</span>
+            <span class="phase-duration">2-3 天</span>
+          </div>
+          <ul class="checklist">
+            <li><code>ai/repository</code>（任务 CRUD）+ 测试</li>
+            <li><code>ai/service</code>（生成编排、积分扣除、取消逻辑）+ 测试</li>
+            <li>AI Provider 接口保持不变，抽离为独立目录</li>
+            <li><code>credits</code> 模块（签到、流水）+ 测试</li>
+            <li><code>ai/routes</code> 重写为薄层</li>
+            <li>数据迁移</li>
+          </ul>
+        </div>
+
+        <div class="phase">
+          <div class="phase-header">
+            <span class="phase-badge phase-7">Phase 7</span>
+            <span class="phase-title">前端适配 + 收尾</span>
+            <span class="phase-duration">2-3 天</span>
+          </div>
+          <ul class="checklist">
+            <li>前端 API 层适配（ID 从 number 改为 string/UUID）</li>
+            <li>ESLint + Prettier 配置</li>
+            <li>CI 配置（GitHub Actions：lint + test）</li>
+            <li>Docker Compose（PostgreSQL + App）</li>
+            <li>更新 CLAUDE.md</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- Section 8 -->
+      <div class="section" id="sec-8">
+        <div class="section-header">
+          <div class="section-num">8</div>
+          <h2 class="section-title">数据迁移策略</h2>
+        </div>
+        <p><strong>已确认从零开始</strong>，不需要 SQLite → PostgreSQL 数据迁移。重写 seed 脚本填充演示数据即可。</p>
+      </div>
+
+      <!-- Section 9 -->
+      <div class="section" id="sec-9">
+        <div class="section-header">
+          <div class="section-num">9</div>
+          <h2 class="section-title">风险和注意事项</h2>
+        </div>
+        <div class="risk-grid">
+          <div class="risk-card">
+            <div class="risk-icon">!</div>
+            <div class="risk-content">
+              <div class="risk-title">前端大量硬编码 number 类型 ID</div>
+              <div class="risk-desc">全局搜索 number 类型定义，统一改为 string</div>
+            </div>
+          </div>
+          <div class="risk-card">
+            <div class="risk-icon">!</div>
+            <div class="risk-content">
+              <div class="risk-title">SQLite 的 datetime 格式与 PG 不同</div>
+              <div class="risk-desc">统一用 ISO 8601，Drizzle 自动处理</div>
+            </div>
+          </div>
+          <div class="risk-card">
+            <div class="risk-icon">!</div>
+            <div class="risk-content">
+              <div class="risk-title">迁移过程中服务不可用</div>
+              <div class="risk-desc">分阶段迁移，双写过渡或维护窗口</div>
+            </div>
+          </div>
+          <div class="risk-card">
+            <div class="risk-icon">!</div>
+            <div class="risk-content">
+              <div class="risk-title">测试覆盖不全导致回归</div>
+              <div class="risk-desc">先覆盖核心路径（用户、作品、fork），再补充</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Section 10 -->
+      <div class="section" id="sec-10">
+        <div class="section-header">
+          <div class="section-num">10</div>
+          <h2 class="section-title">讨论点</h2>
+        </div>
+        <p style="margin-bottom:20px;">所有决策已确认：</p>
+
+        <h3>核心决策</h3>
+        <div class="decision-grid">
+          <div class="decision-card" style="border-left: 3px solid var(--success);">
+            <div class="decision-title" style="color: var(--success);">PostgreSQL 部署</div>
+            <div class="decision-desc">本地 Docker — docker-compose 一键启动</div>
+          </div>
+          <div class="decision-card" style="border-left: 3px solid var(--success);">
+            <div class="decision-title" style="color: var(--success);">UUID 策略</div>
+            <div class="decision-desc">UUID v4 随机 — 前端 ID 改为 string</div>
+          </div>
+          <div class="decision-card" style="border-left: 3px solid var(--success);">
+            <div class="decision-title" style="color: var(--success);">数据迁移</div>
+            <div class="decision-desc">从零开始 — 重写 seed 脚本</div>
+          </div>
+          <div class="decision-card" style="border-left: 3px solid var(--success);">
+            <div class="decision-title" style="color: var(--success);">阶段顺序</div>
+            <div class="decision-desc">Phase 0 → 7 按顺序执行</div>
+          </div>
+          <div class="decision-card" style="border-left: 3px solid var(--success);">
+            <div class="decision-title" style="color: var(--success);">前端时机</div>
+            <div class="decision-desc">后端完成后统一改前端</div>
+          </div>
+        </div>
+
+        <h3>实现细节</h3>
+        <div class="decision-grid">
+          <div class="decision-card">
+            <div class="decision-title">后端运行</div>
+            <div class="decision-desc">继续用 tsx，不加编译步骤</div>
+          </div>
+          <div class="decision-card">
+            <div class="decision-title">API 版本号</div>
+            <div class="decision-desc">不加 /v1 前缀，等真正需要时再加</div>
+          </div>
+          <div class="decision-card">
+            <div class="decision-title">图片存储</div>
+            <div class="decision-desc">先本地磁盘，文件名设计便于迁 OSS（如 <code>{type}/{date}/{uuid}.{ext}</code>）</div>
+          </div>
+          <div class="decision-card">
+            <div class="decision-title">seed 数据</div>
+            <div class="decision-desc">保持现有规模：5 用户 + 7 作品</div>
+          </div>
+          <div class="decision-card">
+            <div class="decision-title">系统通知</div>
+            <div class="decision-desc">conversation_type 加 <code>system</code>，sender_id 为 NULL 表示系统发送，去掉 id=0 假用户</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="footer">
+        CoCoNut Enterprise Refactor Plan · v1.0 · 2026-05-17
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    // Active sidebar link tracking
+    const sections = document.querySelectorAll('.section');
+    const navLinks = document.querySelectorAll('.sidebar nav a');
+
+    const observer = new IntersectionObserver(entries => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          navLinks.forEach(link => {
+            link.style.color = '';
+            link.style.background = '';
+            link.style.borderLeftColor = 'transparent';
+          });
+          const activeLink = document.querySelector(`.sidebar nav a[href="#${entry.target.id}"]`);
+          if (activeLink) {
+            activeLink.style.color = 'var(--text)';
+            activeLink.style.background = 'var(--primary-glow)';
+            activeLink.style.borderLeftColor = 'var(--primary)';
+          }
+        }
+      });
+    }, { rootMargin: '-20% 0px -70% 0px' });
+
+    sections.forEach(section => observer.observe(section));
+  </script>
+
+</body>
+</html>

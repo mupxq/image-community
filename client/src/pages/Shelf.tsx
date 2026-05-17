@@ -38,7 +38,7 @@ export default function Shelf() {
       const data = await subscriptionsApi.list(user.id)
       setSubscriptions(data)
     } else {
-      const data = await bookmarksApi.list(user.id, status)
+      const data = await bookmarksApi.list(status)
       setBookmarks(data)
     }
   }
@@ -50,12 +50,12 @@ export default function Shelf() {
     navigate(`/work/${sub.work_id}`)
   }
 
-  const updateStatus = async (id: number, read_status: string) => {
+  const updateStatus = async (id: string, read_status: string) => {
     await bookmarksApi.update(id, { read_status })
     load()
   }
 
-  const remove = async (id: number) => {
+  const remove = async (id: string) => {
     await bookmarksApi.remove(id)
     load()
   }
@@ -87,7 +87,7 @@ export default function Shelf() {
             )}
             {subscriptions.map((sub) => (
               <div key={sub.id} onClick={() => handleSubClick(sub)} className="flex gap-3 bg-bg-card rounded-xl p-3 cursor-pointer hover:scale-[1.01] transition-transform relative">
-                <div className={`w-16 h-20 bg-gradient-to-br ${gradients[sub.work_id % gradients.length]} rounded-lg flex items-center justify-center text-xs text-white shrink-0`}>
+                <div className={`w-16 h-20 bg-gradient-to-br ${gradients[sub.work_id.charCodeAt(0) % gradients.length]} rounded-lg flex items-center justify-center text-xs text-white shrink-0`}>
                   {sub.type === 'comic' ? '漫画' : sub.type === 'novel' ? '小说' : '短剧'}
                 </div>
                 <div className="flex-1 min-w-0">
@@ -129,7 +129,7 @@ export default function Shelf() {
           const progress = (bm.total_pages ?? 0) > 0 ? Math.round(((bm.last_read_page ?? 0) / bm.total_pages!) * 100) : 0
           return (
             <div key={bm.id} onClick={() => navigate(`/work/${bm.work_id}`)} className="flex gap-3 bg-bg-card rounded-xl p-3 cursor-pointer hover:scale-[1.01] transition-transform relative">
-              <div className={`w-16 h-20 bg-gradient-to-br ${gradients[bm.work_id % gradients.length]} rounded-lg flex items-center justify-center text-xs text-white shrink-0`}>
+              <div className={`w-16 h-20 bg-gradient-to-br ${gradients[bm.work_id.charCodeAt(0) % gradients.length]} rounded-lg flex items-center justify-center text-xs text-white shrink-0`}>
                 {bm.type === 'comic' ? '漫画' : '短剧'}
               </div>
               <div className="flex-1 min-w-0">

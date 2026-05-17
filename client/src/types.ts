@@ -1,5 +1,5 @@
 export interface AuthUser {
-  id: number
+  id: string
   username: string
   nickname: string
   avatar: string
@@ -8,7 +8,7 @@ export interface AuthUser {
 }
 
 export interface User {
-  id: number
+  id: string
   nickname: string
   avatar: string
   bio: string
@@ -16,15 +16,15 @@ export interface User {
 }
 
 export interface Work {
-  id: number
+  id: string
   title: string
   subtitle?: string
   description: string
   cover_image: string
   type: 'comic' | 'drama' | 'novel'
-  creator_id: number
-  parent_work_id: number | null
-  root_work_id: number | null
+  creator_id: string
+  parent_work_id: string | null
+  root_work_id: string | null
   status: 'draft' | 'published'
   created_at: string
   creator_name?: string
@@ -35,7 +35,7 @@ export interface Work {
 
 export interface WorkDetail extends Work {
   contributors: Contributor[]
-  parentWork: { id: number; title: string; creator_name: string } | null
+  parentWork: { id: string; title: string; creator_name: string } | null
   allow_fork?: number
   fork_from_page?: number | null
   like_count?: number
@@ -43,7 +43,7 @@ export interface WorkDetail extends Work {
 }
 
 export interface BranchWork {
-  id: number
+  id: string
   title: string
   description: string
   cover_image: string
@@ -56,15 +56,15 @@ export interface BranchWork {
 }
 
 export interface PageLikeInfo {
-  page_id: number
+  page_id: string
   page_number: number
   like_count: number
   liked: boolean
 }
 
 export interface WorkPage {
-  id: number
-  work_id: number
+  id: string
+  work_id: string
   page_number: number
   image_url: string
   description: string
@@ -74,7 +74,7 @@ export interface WorkPage {
 }
 
 export interface Contributor {
-  id: number
+  id: string
   nickname: string
   avatar: string
   role: 'creator' | 'ancestor'
@@ -82,21 +82,21 @@ export interface Contributor {
 }
 
 export interface Comment {
-  id: number
-  work_id: number
-  user_id: number
+  id: string
+  work_id: string
+  user_id: string
   content: string
   created_at: string
   nickname: string
   avatar: string
-  parent_id: number | null
+  parent_id: string | null
   reply_to_name: string | null
 }
 
 export interface Bookmark {
-  id: number
-  user_id: number
-  work_id: number
+  id: string
+  user_id: string
+  work_id: string
   read_status: 'want_read' | 'reading' | 'finished'
   last_read_page: number
   created_at: string
@@ -110,10 +110,10 @@ export interface Bookmark {
 }
 
 export interface Conversation {
-  id: number
+  id: string
   type: 'private' | 'group'
   title: string
-  work_id: number | null
+  work_id: string | null
   created_at: string
   displayName?: string
   displayAvatar?: string
@@ -124,9 +124,9 @@ export interface Conversation {
 }
 
 export interface Message {
-  id: number
-  conversation_id: number
-  sender_id: number
+  id: string
+  conversation_id: string
+  sender_id: string | null
   content: string
   msg_type: 'text' | 'image' | 'work_share' | 'system'
   created_at: string
@@ -135,13 +135,13 @@ export interface Message {
 }
 
 export interface TreeNode {
-  id: number
+  id: string
   title: string
   cover_image: string
   type: 'comic' | 'drama' | 'novel'
-  parent_work_id: number | null
-  root_work_id: number | null
-  creator_id: number
+  parent_work_id: string | null
+  root_work_id: string | null
+  creator_id: string
   created_at: string
   creator_name: string
   creator_avatar: string
@@ -150,20 +150,20 @@ export interface TreeNode {
 }
 
 export interface ChapterTreeWork {
-  id: number
+  id: string
   title: string
   subtitle: string
   type: string
-  parent_work_id: number | null
-  root_work_id: number | null
+  parent_work_id: string | null
+  root_work_id: string | null
   fork_from_page: number | null
-  creator_id: number
+  creator_id: string
   creator_name: string
 }
 
 export interface ChapterTreePage {
-  id: number
-  work_id: number
+  id: string
+  work_id: string
   page_number: number
   description: string
   dialogue: string
@@ -172,7 +172,7 @@ export interface ChapterTreePage {
 export interface ChapterTreeData {
   works: ChapterTreeWork[]
   pages: ChapterTreePage[]
-  rootWorkId: number
+  root_work_id: string
 }
 
 export interface PageInput {
@@ -221,9 +221,9 @@ export interface AIGeneratePage {
 }
 
 export interface Subscription {
-  id: number
-  user_id: number
-  work_id: number
+  id: string
+  user_id: string
+  work_id: string
   last_viewed_fork_count: number
   created_at: string
   title: string

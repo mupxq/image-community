@@ -12,7 +12,7 @@ import SharePoster from '../components/SharePoster'
 export default function WorkDetail() {
   const { id } = useParams<{ id: string }>()
   const [searchParams] = useSearchParams()
-  const highlightCommentId = searchParams.get('comment') ? Number(searchParams.get('comment')) : undefined
+  const highlightCommentId = searchParams.get('comment') || undefined
   const startFromPage = Number(searchParams.get('from_page')) || 0
   const pageRefs = useRef<Record<number, HTMLDivElement | null>>({})
   const navigate = useNavigate()
@@ -34,10 +34,10 @@ export default function WorkDetail() {
   useEffect(() => {
     if (!id) return
     Promise.all([
-      worksApi.getById(Number(id)),
-      worksApi.getPages(Number(id)),
-      commentsApi.list(Number(id)),
-      worksApi.getPageLikes(Number(id)),
+      worksApi.getById(id),
+      worksApi.getPages(id),
+      commentsApi.list(id),
+      worksApi.getPageLikes(id),
     ]).then(([w, p, c, likes]) => {
       setWork(w)
       setPages(p)
@@ -47,7 +47,7 @@ export default function WorkDetail() {
       setBranchCounts({})
     })
     if (user) {
-      subscriptionsApi.check(Number(id)).then((s) => setIsSubscribed(s.subscribed)).catch(() => {})
+      subscriptionsApi.check(id).then((s) => setIsSubscribed(s.subscribed)).catch(() => {})
     }
   }, [id, user])
 
@@ -122,7 +122,7 @@ export default function WorkDetail() {
     const counts: Record<number, number> = {}
     Promise.all(
       pages.map(p =>
-        worksApi.getBranches(Number(id), p.page_number).then(branches => {
+        worksApi.getBranches(id, p.page_number).then(branches => {
           if (branches.length > 0) counts[p.page_number] = branches.length
         })
       )
@@ -165,7 +165,7 @@ export default function WorkDetail() {
     }
     setLoadingBranches(pageNumber)
     try {
-      const branches = await worksApi.getBranches(Number(id), pageNumber)
+      const branches = await worksApi.getBranches(id, pageNumber)
       setExpandedBranches(prev => ({ ...prev, [pageNumber]: branches }))
     } finally {
       setLoadingBranches(null)
