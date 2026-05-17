@@ -127,7 +127,14 @@ app.get(/.*/, (_req, res) => {
 })
 
 // Start server
-const server = app.listen(PORT, () => {
+const server = app.listen(PORT, async () => {
+  // Seed demo data if DB is empty
+  try {
+    const { default: seedData } = await import('./seed')
+    await seedData()
+  } catch (err) {
+    console.error('[Seed] 数据初始化失败:', err)
+  }
   console.log(`CoCoNut 服务已启动: http://localhost:${PORT}`)
 })
 

@@ -276,3 +276,11 @@ export default async function seedData(): Promise<void> {
 
   console.log('预置数据初始化完成！')
 }
+
+// Auto-run when executed directly (npm run seed), not when imported
+if (process.argv[1]?.endsWith('seed.ts')) {
+  seedData().then(() => process.exit(0)).catch((err) => {
+    console.error('[Seed] 失败:', err)
+    process.exit(1)
+  })
+}
