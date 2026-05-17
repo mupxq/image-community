@@ -37,7 +37,7 @@ export default function Profile() {
     load()
     creditsApi.status().then(s => {
       setCredits(s.credits)
-      setCheckedIn(s.checkedInToday)
+      setCheckedIn(s.checked_in_today)
       setStreak(s.streak)
     }).catch(() => {})
     tasksApi.list().then(setTasks).catch(() => {})
@@ -52,7 +52,7 @@ export default function Profile() {
     try {
       const res = await creditsApi.checkIn()
       setCheckedIn(true)
-      setCredits(res.totalCredits)
+      setCredits(res.total_credits)
       setStreak(res.streak)
       setCheckInMsg(res.message)
       setTimeout(() => setCheckInMsg(''), 3000)

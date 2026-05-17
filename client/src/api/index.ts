@@ -136,9 +136,9 @@ export const aiApi = {
 
 export const creditsApi = {
   status: () =>
-    request<{ credits: number; checkedInToday: boolean; streak: number }>('/credits/status'),
+    request<{ credits: number; checked_in_today: boolean; streak: number }>('/credits/status'),
   checkIn: () =>
-    request<{ creditsEarned: number; streak: number; totalCredits: number; message: string }>('/credits/check-in', { method: 'POST' }),
+    request<{ credits_earned: number; streak: number; total_credits: number; message: string }>('/credits/check-in', { method: 'POST' }),
   logs: () =>
     request<{ id: string; amount: number; type: string; description: string; task_id: string | null; created_at: string }[]>('/credits/logs'),
 }
